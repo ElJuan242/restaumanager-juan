@@ -1,0 +1,533 @@
+================================================================================
+                    RESTAURAMANAGER 5 - REQUERIMIENTOS DEL PROYECTO
+================================================================================
+
+Nombre:         RestauManager - Sistema de Gestion de Restaurante
+Framework:      Laravel 12 (PHP 8.2+)
+Base de datos:  MySQL (restauranager)
+Frontend Web:   Blade + Bootstrap 5.3 + Bootstrap Icons
+Frontend Movil: Flutter 3.0+
+API Auth:       Laravel Sanctum
+Idioma:         Espanol (es)
+Zona horaria:   America/Bogota
+
+================================================================================
+MODULO 1: AUTENTICACION
+================================================================================
+
+Requerimientos:
+- Formulario de login (email + password + "recordarme")
+- Validacion de credenciales
+- Bloqueo de usuarios desactivados (campo active)
+- Regeneracion de sesion al iniciar
+- Invalidacion de sesion al cerrar
+- Proteccion CSRF
+- Dos roles: admin y user (informativo, sin RBAC estricto)
+- API: login con Sanctum (retorna token), logout, perfil
+
+Credenciales por defecto:
+  Admin: admin@restauranager.com / admin123
+  User:  mesero@restauranager.com / mesero123
+
+Rutas Web: GET /login, POST /login, POST /logout
+Rutas API: POST /api/login, POST /api/logout, GET /api/profile
+
+================================================================================
+MODULO 2: DASHBOARD
+================================================================================
+
+Requerimientos:
+- Panel principal con estadisticas resumidas
+- Tarjetas: total inventario, stock bajo, reservas, mesas
+- Lista de reservas proximas
+- Alertas de stock bajo
+- Mesas disponibles
+
+Ruta: GET /dashboard
+Vista: dashboard/index.blade.php
+
+================================================================================
+MODULO 3: INVENTARIO
+================================================================================
+
+Requerimientos:
+- CRUD completo de productos/insumos
+- Busqueda por nombre
+- Filtro por categoria (9 categorias predefinidas)
+- Filtro de stock bajo (cantidad <= min_stock)
+- Ajuste de cantidad (sumar/restar) con prevencion de stock negativo
+- Soft-delete + campo active
+- Categorias: Carnes, Verduras, Granos, Bebidas, Lacteos, Aceites,
+  Condimentos, Insumos, General
+
+Campos: name, description, category, quantity, unit, price, min_stock
+
+Rutas Web:
+  GET    /inventory
+  GET    /inventory/create
+  POST   /inventory
+  GET    /inventory/{id}
+  GET    /inventory/{id}/edit
+  PUT    /inventory/{id}
+  DELETE /inventory/{id}
+  PATCH  /inventory/{id}/adjust-quantity
+
+Rutas API:
+  GET /api/inventory
+  GET /api/inventory/{id}
+  GET /api/inventory/categorias
+
+Vistas: inventory/index, create, edit, show
+
+================================================================================
+MODULO 4: RESERVAS
+================================================================================
+
+Requerimientos:
+- CRUD completo de reservas
+- Busqueda por nombre de cliente
+- Filtro por estado (pending, confirmed, cancelled, completed)
+- Filtro por fecha (hoy, proximas)
+- Validacion de capacidad de mesa al crear/editar
+- Cambio rapido de estado (PATCH)
+- Soft-delete
+
+Campos: client_name, client_phone, client_email, reservation_date,
+        people_count, restaurant_table_id, status, notes
+
+Rutas Web:
+  GET    /reservations
+  GET    /reservations/create
+  POST   /reservations
+  GET    /reservations/{id}
+  GET    /reservations/{id}/edit
+  PUT    /reservations/{id}
+  DELETE /reservations/{id}
+  PATCH  /reservations/{id}/status
+
+Rutas API:
+  GET    /api/reservations
+  GET    /api/reservations/{id}
+  POST   /api/reservations
+  PATCH  /api/reservations/{id}/status
+  DELETE /api/reservations/{id}
+  GET    /api/reservations/statuses
+
+Vistas: reservations/index, create, edit, show
+
+================================================================================
+MODULO 5: MESAS DEL RESTAURANTE
+================================================================================
+
+Requerimientos:
+- CRUD completo de mesas
+- Busqueda por numero de mesa
+- Filtro por estado (available, occupied, reserved, maintenance)
+- Filtro por ubicacion
+- Filtro por capacidad minima
+- Verificar disponibilidad de mesa
+- Proteccion de eliminacion si tiene reservas activas
+- 6 zonas: Salon Principal, Terraza, VIP, Barra, Salon Privado, Exterior
+
+Campos: table_number, capacity, location, status, is_active
+
+Rutas Web:
+  GET    /tables
+  GET    /tables/create
+  POST   /tables
+  GET    /tables/{id}
+  GET    /tables/{id}/edit
+  PUT    /tables/{id}
+  DELETE /tables/{id}
+
+Rutas API:
+  GET    /api/tables
+  GET    /api/tables/{id}
+  POST   /api/tables
+  PUT    /api/tables/{id}
+  DELETE /api/tables/{id}
+  GET    /api/tables/available/list
+  GET    /api/tables/locations/list
+
+Vistas: tables/index, create, edit, show
+
+================================================================================
+MODULO 6: MENU - CATEGORIAS
+================================================================================
+
+Requerimientos:
+- CRUD de categorias del menu
+- Slug auto-generado desde el nombre
+- Conteo de items por categoria
+- Eliminacion protegida si tiene items
+- Orden de visualizacion (sort_order)
+
+Campos: name, slug, description, sort_order, is_active
+
+Rutas Web:
+  GET    /menu-categories
+  GET    /menu-categories/create
+  POST   /menu-categories
+  GET    /menu-categories/{id}/edit
+  PUT    /menu-categories/{id}
+  DELETE /menu-categories/{id}
+
+Ruta API: GET /api/menu/categories
+
+Vistas: menus/categories/index, create, edit
+
+================================================================================
+MODULO 7: MENU - ITEMS
+================================================================================
+
+Requerimientos:
+- CRUD completo de platos/bebidas
+- Busqueda por nombre
+- Filtro por categoria, disponibilidad, destacados
+- Toggle de disponibilidad (PATCH)
+- Ingredientes en formato JSON (ingresados por coma)
+- Campo destacado (is_featured)
+
+Campos: name, description, price, category_id, image, ingredients (JSON),
+        is_available, is_featured, sort_order
+
+Rutas Web:
+  GET    /menu-items
+  GET    /menu-items/create
+  POST   /menu-items
+  GET    /menu-items/{id}
+  GET    /menu-items/{id}/edit
+  PUT    /menu-items/{id}
+  DELETE /menu-items/{id}
+  PATCH  /menu-items/{id}/toggle-available
+
+Rutas API:
+  GET /api/menu/items
+  GET /api/menu/featured
+  GET /api/menu/items/{id}
+
+Vistas: menus/items/index, create, edit, show
+
+================================================================================
+MODULO 8: CLIENTES
+================================================================================
+
+Requerimientos:
+- CRUD completo de clientes
+- Busqueda por nombre
+- Filtro VIP
+- Tracking de visitas y gasto total
+- Email unico
+- Fecha de nacimiento (para promociones)
+- Relacion con ordenes y reservas
+
+Campos: name, phone, email, address, birth_date, notes,
+        total_visits, total_spent, last_visit, is_vip
+
+Rutas Web:
+  GET    /customers
+  GET    /customers/create
+  POST   /customers
+  GET    /customers/{id}
+  GET    /customers/{id}/edit
+  PUT    /customers/{id}
+  DELETE /customers/{id}
+
+Rutas API:
+  GET    /api/customers
+  POST   /api/customers
+  GET    /api/customers/{id}
+  PUT    /api/customers/{id}
+
+Vistas: customers/index, create, edit, show
+
+================================================================================
+MODULO 9: EMPLEADOS
+================================================================================
+
+Requerimientos:
+- CRUD completo de empleados
+- Busqueda por nombre
+- Filtro por rol y estado activo
+- 6 roles: Mesero, Cocinero, Bartender, Anfitrion, Gerente, Otro
+- Documento de identificacion, salario, fecha de contratacion
+- Historial de turnos (ultimos 10)
+
+Campos: name, phone, email, role, position, document_id, salary,
+        hired_at, is_active
+
+Rutas Web:
+  GET    /employees
+  GET    /employees/create
+  POST   /employees
+  GET    /employees/{id}
+  GET    /employees/{id}/edit
+  PUT    /employees/{id}
+  DELETE /employees/{id}
+
+Vistas: employees/index, create, edit, show
+
+================================================================================
+MODULO 10: TURNOS/HORARIOS
+================================================================================
+
+Requerimientos:
+- CRUD de turnos asignados a empleados
+- Filtro por fecha (default: hoy)
+- Filtro por empleado
+- Registro de hora real de inicio/fin
+- Calculo de duracion del turno
+
+Campos: employee_id, date, start_time, end_time, actual_start,
+        actual_end, notes
+
+Rutas Web:
+  GET    /shifts
+  GET    /shifts/create
+  POST   /shifts
+  GET    /shifts/{id}/edit
+  PUT    /shifts/{id}
+  DELETE /shifts/{id}
+
+Vistas: employees/shifts/index, create, edit
+
+================================================================================
+MODULO 11: ORDENES / PUNTO DE VENTA (POS)
+================================================================================
+
+Requerimientos:
+- CRUD completo de ordenes/pedidos
+- Numeracion automatica: ORD-YYMMDD-NNN
+- 3 origenes: dine_in, takeaway, delivery
+- Flujo de estados: open -> preparing -> ready -> served (o cancelled)
+- Tracking individual de estado por item
+- Agregar items a ordenes existentes
+- Seleccion de mesa, cliente y empleado
+- Calculo automatico: subtotal + 19% IVA = total
+- Vista de cocina para ordenes activas
+- Items con modificadores y notas
+- Busqueda por numero de orden
+- Filtro por estado, mesa, origen
+
+Campos: order_number, restaurant_table_id, customer_id, employee_id,
+        status, source, notes, subtotal, tax, total
+
+Items: menu_item_id, item_name, quantity, unit_price, subtotal,
+       modifiers, notes, status
+
+Rutas Web:
+  GET    /orders
+  GET    /orders/create
+  POST   /orders
+  GET    /orders/{id}
+  GET    /orders/{id}/edit
+  PUT    /orders/{id}
+  DELETE /orders/{id}
+  PATCH  /orders/{orderItem}/item-status
+  POST   /orders/{id}/add-items
+  GET    /kitchen
+
+Rutas API:
+  GET    /api/orders
+  GET    /api/orders/{id}
+  PATCH  /api/orders/{id}/status
+  GET    /api/orders/kitchen/list
+
+Vistas: orders/index, create, edit, show, kitchen
+
+================================================================================
+MODULO 12: FACTURACION
+================================================================================
+
+Requerimientos:
+- Generacion de facturas desde ordenes
+- Numeracion automatica: FAC-YYMMDD-NNN
+- Cargos por servicio: 10% default
+- Descuentos aplicables
+- Pagos parciales soportados
+- Balance: total - suma(pagos)
+- 4 metodos de pago: Efectivo, Tarjeta, Transferencia, Otro
+- Campo de referencia para tarjeta/transferencia
+- Auto-cambio a estado 'paid' cuando total pagado >= total
+- Liberacion automatica de mesa al pagar completamente
+- Proteccion de eliminacion si tiene pagos registrados
+- Filtro por estado, rango de fechas
+
+Campos: bill_number, order_id, customer_id, subtotal, tax,
+        service_charge, discount, total, status
+
+Pagos: bill_id, amount, method, reference, notes
+
+Rutas Web:
+  GET    /bills
+  GET    /bills/create
+  POST   /bills
+  GET    /bills/{id}
+  DELETE /bills/{id}
+  POST   /bills/{id}/pay
+
+Rutas API:
+  GET /api/bills
+  GET /api/bills/{id}
+
+Vistas: bills/index, create, show
+
+================================================================================
+MODULO 13: PROVEEDORES
+================================================================================
+
+Requerimientos:
+- CRUD completo de proveedores
+- Busqueda por nombre
+- Filtro por categoria de suministro
+- Historial de ultimas 10 ordenes de compra
+
+Campos: name, contact_name, phone, email, address, category, notes,
+        is_active
+
+Rutas Web:
+  GET    /suppliers
+  GET    /suppliers/create
+  POST   /suppliers
+  GET    /suppliers/{id}
+  GET    /suppliers/{id}/edit
+  PUT    /suppliers/{id}
+  DELETE /suppliers/{id}
+
+Rutas API:
+  GET /api/suppliers
+  GET /api/suppliers/{id}
+
+Vistas: suppliers/index, create, edit, show
+
+================================================================================
+MODULO 14: ORDENES DE COMPRA
+================================================================================
+
+Requerimientos:
+- CRUD completo de ordenes de compra
+- Numeracion automatica: PO-YYMMDD-NNN
+- Seleccion de proveedor
+- Items desde inventario con cantidades
+- Calculo automatico: subtotal + 19% IVA
+- Flujo: pending -> ordered -> partial -> received (o cancelled)
+- Registro de recepcion de mercancia
+- Recepcion parcial (por item)
+- Incremento automatico del inventario al recibir
+- Bloqueo de edicion si esta received o cancelled
+
+Campos: po_number, supplier_id, order_date, expected_date, received_date,
+        status, subtotal, tax, total, notes
+
+Items: purchase_order_id, inventory_id, item_name, quantity, unit,
+       unit_price, subtotal, received_qty
+
+Rutas Web:
+  GET    /purchases
+  GET    /purchases/create
+  POST   /purchases
+  GET    /purchases/{id}
+  GET    /purchases/{id}/edit
+  PUT    /purchases/{id}
+  DELETE /purchases/{id}
+  POST   /purchases/{id}/receive
+
+Vistas: purchases/index, create, edit, show
+
+================================================================================
+MODULO 15: REPORTES
+================================================================================
+
+Requerimientos:
+- Dashboard de reportes con rango de fechas (default: ultimos 30 dias)
+- KPIs: total ventas, cantidad facturas, venta promedio, total ordenes,
+  valor promedio de orden
+- Top 10 platos mas vendidos
+- Desglose diario de ventas
+- Distribucion por metodo de pago
+- Estadisticas de reservas (total, confirmadas)
+
+Ruta: GET /reports
+Vista: reports/index.blade.php
+
+================================================================================
+MODULO 16: APP MOVIL (FLUTTER)
+================================================================================
+
+Ubicacion: flutter_app/
+Paquete: restauranager_app v1.0.0+1
+
+Dependencias:
+- http: ^1.2.0
+- provider: ^6.1.0
+- shared_preferences: ^2.2.0
+- intl: ^0.19.0
+
+Modelos: User, InventoryItem, Reservation
+
+Servicios: ApiService, AuthProvider
+
+Pantallas:
+  1. LoginScreen
+  2. HomeScreen
+  3. InventoryListScreen
+  4. ReservationListScreen
+  5. ReservationFormScreen
+
+Tests: 11 (5 api_service + 6 models)
+
+================================================================================
+LOGICA DE NEGOCIO
+================================================================================
+
+IMPUESTOS: IVA 19% en ordenes y ordenes de compra
+CARGO SERVICIO: 10% default en facturas
+NUMERACION: ORD-YYMMDD-NNN, FAC-YYMMDD-NNN, PO-YYMMDD-NNN
+MESAS: 6 ubicaciones, 4 estados, validacion de capacidad
+INVENTARIO: Soft-delete + active, deteccion stock bajo, ajuste cantidad
+ORDENES: 3 origenes, 5 estados, tracking por item
+FACTURACION: Pagos parciales, liberacion automatica mesa
+COMPRAS: Recepcion parcial, incremento automatico inventario
+
+================================================================================
+BASE DE DATOS: 19 TABLAS
+================================================================================
+
+1. users
+2. password_reset_tokens
+3. sessions
+4. inventory (inventario)
+5. reservations (reservas)
+6. restaurant_tables (mesas)
+7. menu_categories (categorias menu)
+8. menu_items (items menu)
+9. customers (clientes)
+10. employees (empleados)
+11. shifts (turnos)
+12. orders (ordenes)
+13. order_items (items de orden)
+14. bills (facturas)
+15. payments (pagos)
+16. suppliers (proveedores)
+17. purchase_orders (ordenes de compra)
+18. purchase_order_items (items de compra)
+19. cache / cache_locks
+
+================================================================================
+RESUMEN
+================================================================================
+
+Modulos funcionales:  16
+Rutas web:           117+
+Endpoints API:        26
+Modelos:              16
+Tablas BD:            19
+Plantillas Blade:     50
+API Resources:        12
+Controladores web:    25
+Controladores API:     9
+Tests backend:        17
+Tests Flutter:        11
+Pantallas Flutter:     5
+
+================================================================================
