@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\OrderSource;
 use App\Enums\OrderStatus;
+use App\Enums\TableStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -26,6 +27,10 @@ class Order extends Model
         'subtotal',
         'tax',
         'total',
+        'cancelled_by',
+        'cancelled_at',
+        'cancel_reason',
+        'authorized_by',
     ];
 
     protected function casts(): array
@@ -36,6 +41,7 @@ class Order extends Model
             'subtotal' => 'float',
             'tax' => 'float',
             'total' => 'float',
+            'cancelled_at' => 'datetime',
         ];
     }
 
@@ -73,23 +79,37 @@ class Order extends Model
         return $this->hasOne(Bill::class);
     }
 
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    public function authorizedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'authorized_by');
+    }
+
     public function taxRate(): float
     {
         return (float) config('restauranager.tax_rate', 0.19);
     }
 
     /**
-     * Recalcula subtotal + IVA 19% = total a partir de los items.
+     * Recalcula los totales a partir de los items.
+     *
+     * El precio del menú es precio final con IVA incluido:
+     * total = suma de (precio x cantidad); subtotal = total / (1 + IVA); IVA = total - subtotal.
      */
     public function recalculateTotals(): void
     {
-        $subtotal = (float) $this->items()->sum('subtotal');
-        $tax = round($subtotal * $this->taxRate(), 2);
+        $total = round((float) $this->items()->sum('subtotal'), 2);
+        $subtotal = round($total / (1 + $this->taxRate()));
+        $tax = round($total - $subtotal, 2);
 
         $this->forceFill([
             'subtotal' => $subtotal,
             'tax' => $tax,
-            'total' => $subtotal + $tax,
+            'total' => $total,
         ])->save();
     }
 
@@ -99,14 +119,14 @@ class Order extends Model
     }
 
     /**
-     * Al servir o cancelar la orden se libera la mesa asociada.
+     * Al servir la orden se libera la mesa asociada.
      */
     public function releaseTable(): void
     {
         if ($this->restaurant_table_id && $this->status->isClosable()) {
             RestaurantTable::where('id', $this->restaurant_table_id)
-                ->where('status', \App\Enums\TableStatus::Occupied->value)
-                ->update(['status' => \App\Enums\TableStatus::Available->value]);
+                ->where('status', TableStatus::Occupied->value)
+                ->update(['status' => TableStatus::Available->value]);
         }
     }
 

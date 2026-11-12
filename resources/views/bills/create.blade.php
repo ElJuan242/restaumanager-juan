@@ -6,9 +6,12 @@
 @section('content')
     @if ($ordenSel)
         @php
-            $subtotal = (float) $ordenSel->subtotal;
-            $tax = (float) $ordenSel->tax;
-            $servicioSugerido = round($subtotal * 0.10, 2);
+            $consumo = (float) $ordenSel->total;
+            $ivaTasa = (float) config('restauranager.tax_rate', 0.19);
+            $porcentajeInicial = (float) old('service_charge_percent', $porcentajeServicio);
+            $exentoInicial = (bool) old('service_charge_waived', false);
+            $descuentoInicial = (float) old('discount', 0);
+            $importes = \App\Models\Bill::breakdown($consumo, $descuentoInicial, $porcentajeInicial, $exentoInicial);
         @endphp
 
         <form method="POST" action="{{ route('bills.store') }}">
@@ -46,7 +49,7 @@
                                         <th>Plato</th>
                                         <th class="text-center">Cant.</th>
                                         <th class="text-end">Precio unit.</th>
-                                        <th class="text-end">Subtotal</th>
+                                        <th class="text-end">Importe</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -69,17 +72,32 @@
                         <div class="rm-card-header"><i class="bi bi-calculator me-2"></i>Ajustes de la factura</div>
                         <div class="card-body">
                             <div class="mb-3">
-                                <label for="service_charge" class="form-label fw-semibold">Cargo por servicio (10%)</label>
+                                <label for="service_charge_percent" class="form-label fw-semibold">Cargo por servicio (%)</label>
                                 <div class="input-group">
-                                    <span class="input-group-text bg-light">$</span>
-                                    <input type="number" name="service_charge" id="service_charge" step="0.01" min="0"
-                                           class="form-control @error('service_charge') is-invalid @enderror"
-                                           value="{{ old('service_charge', $servicioSugerido) }}">
-                                    @error('service_charge')
+                                    <input type="number" name="service_charge_percent" id="service_charge_percent"
+                                           step="0.01" min="0" max="{{ $porcentajeMaximo }}"
+                                           class="form-control @error('service_charge_percent') is-invalid @enderror"
+                                           value="{{ old('service_charge_percent', $porcentajeServicio) }}"
+                                           @disabled($exentoInicial)>
+                                    <span class="input-group-text bg-light">%</span>
+                                    @error('service_charge_percent')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                 </div>
-                                <div class="form-text">Por defecto el 10% del subtotal.</div>
+                                <div class="form-text">
+                                    Entre 0% y {{ pct($porcentajeMaximo) }}. Por defecto {{ pct($porcentajeServicio) }} para consumo en restaurante.
+                                </div>
+                            </div>
+
+                            <div class="form-check mb-3">
+                                <input type="hidden" name="service_charge_waived" value="0">
+                                <input type="checkbox" name="service_charge_waived" id="service_charge_waived" value="1"
+                                       class="form-check-input @error('service_charge_waived') is-invalid @enderror"
+                                       @checked($exentoInicial)>
+                                <label for="service_charge_waived" class="form-check-label">Eximir cargo por servicio</label>
+                                @error('service_charge_waived')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
                             </div>
 
                             <div class="mb-3">
@@ -87,30 +105,38 @@
                                 <div class="input-group">
                                     <span class="input-group-text bg-light">$</span>
                                     <input type="number" name="discount" id="discount" step="0.01" min="0"
+                                           max="{{ $consumo }}"
                                            class="form-control @error('discount') is-invalid @enderror"
                                            value="{{ old('discount', 0) }}">
                                     @error('discount')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                 </div>
+                                <div class="form-text">No puede superar el consumo de la orden.</div>
                             </div>
 
                             <dl class="row mb-2">
                                 <dt class="col-7 text-muted">Subtotal</dt>
-                                <dd class="col-5 text-end" id="creSubtotal">{{ money($subtotal) }}</dd>
+                                <dd class="col-5 text-end" id="creSubtotal">{{ money($importes['subtotal']) }}</dd>
 
-                                <dt class="col-7 text-muted">IVA ({{ pct(19) }})</dt>
-                                <dd class="col-5 text-end" id="creIva">{{ money($tax) }}</dd>
+                                <dt class="col-7 text-muted">IVA incluido ({{ pct($ivaTasa * 100) }})</dt>
+                                <dd class="col-5 text-end" id="creIva">{{ money($importes['tax']) }}</dd>
 
-                                <dt class="col-7 text-muted">Cargo servicio</dt>
-                                <dd class="col-5 text-end" id="creServicio">{{ money($servicioSugerido) }}</dd>
+                                <dt class="col-7 text-muted">
+                                    Cargo servicio (<span id="creServicioPct">{{ pct($importes['service_charge_percent'], 2) }}</span>)
+                                </dt>
+                                <dd class="col-5 text-end" id="creServicio">{{ money($importes['service_charge']) }}</dd>
 
                                 <dt class="col-7 text-muted">Descuento</dt>
-                                <dd class="col-5 text-end text-danger" id="creDescuento">{{ money(0) }}</dd>
+                                <dd class="col-5 text-end text-danger" id="creDescuento">{{ money($importes['discount']) }}</dd>
 
                                 <dt class="col-7 fw-bold fs-5">Total</dt>
-                                <dd class="col-5 text-end fw-bold fs-5" id="creTotal">{{ money($subtotal + $tax + $servicioSugerido) }}</dd>
+                                <dd class="col-5 text-end fw-bold fs-5" id="creTotal">{{ money($importes['total']) }}</dd>
                             </dl>
+
+                            <div class="small text-muted">
+                                <i class="bi bi-info-circle me-1"></i>Los precios del menú incluyen IVA. El cargo por servicio no lleva IVA.
+                            </div>
                         </div>
 
                         <div class="card-footer bg-white d-grid gap-2">
@@ -182,26 +208,43 @@
 @if ($ordenSel)
     @push('scripts')
     <script>
-        const creSubtotal = {{ (float) $ordenSel->subtotal }};
-        const creIva = {{ (float) $ordenSel->tax }};
+        const creConsumo = {{ (float) $ordenSel->total }};
+        const creIvaTasa = {{ (float) config('restauranager.tax_rate', 0.19) }};
+        const crePorcentajeMax = {{ (float) $porcentajeMaximo }};
 
         const moneyFmtCre = (v) => '$ ' + Number(v).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+        const pctFmtCre = (v) => Number(v).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + '%';
 
-        const inputServicio = document.getElementById('service_charge');
+        const inputPorcentaje = document.getElementById('service_charge_percent');
+        const inputExento = document.getElementById('service_charge_waived');
         const inputDescuento = document.getElementById('discount');
 
         function recalcularFactura() {
-            const servicio = parseFloat(inputServicio.value) || 0;
-            const descuento = parseFloat(inputDescuento.value) || 0;
+            const descuento = Math.min(Math.max(parseFloat(inputDescuento.value) || 0, 0), creConsumo);
+            const base = Math.max(creConsumo - descuento, 0);
 
-            const total = creSubtotal + creIva + servicio - descuento;
+            const subtotal = Math.round(base / (1 + creIvaTasa));
+            const iva = Math.round((base - subtotal) * 100) / 100;
 
+            const exento = inputExento.checked;
+            inputPorcentaje.disabled = exento;
+
+            let porcentaje = exento ? 0 : (parseFloat(inputPorcentaje.value) || 0);
+            porcentaje = Math.min(Math.max(porcentaje, 0), crePorcentajeMax);
+
+            const servicio = Math.round((base * porcentaje / 100) * 100) / 100;
+            const total = Math.round((base + servicio) * 100) / 100;
+
+            document.getElementById('creSubtotal').textContent = moneyFmtCre(subtotal);
+            document.getElementById('creIva').textContent = moneyFmtCre(iva);
+            document.getElementById('creServicioPct').textContent = pctFmtCre(porcentaje);
             document.getElementById('creServicio').textContent = moneyFmtCre(servicio);
             document.getElementById('creDescuento').textContent = moneyFmtCre(descuento);
             document.getElementById('creTotal').textContent = moneyFmtCre(total);
         }
 
-        inputServicio.addEventListener('input', recalcularFactura);
+        inputPorcentaje.addEventListener('input', recalcularFactura);
+        inputExento.addEventListener('change', recalcularFactura);
         inputDescuento.addEventListener('input', recalcularFactura);
 
         recalcularFactura();

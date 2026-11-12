@@ -83,12 +83,22 @@
                             </td>
                             <td>{{ $registro->supplier?->name ?? '—' }}</td>
                             <td>{{ date_es($registro->order_date) }}</td>
-                            <td>{{ date_es($registro->expected_date) }}</td>
+                            <td class="{{ $registro->isOverduePartial() ? 'text-danger fw-semibold' : '' }}">
+                                {{ date_es($registro->expected_date) }}
+                                @if ($registro->isOverduePartial())
+                                    <i class="bi bi-exclamation-triangle ms-1" title="Orden parcial vencida"></i>
+                                @endif
+                            </td>
                             <td class="text-center"><span class="badge bg-light text-dark border">{{ $registro->items_count }}</span></td>
                             <td class="text-end">{{ money($registro->subtotal) }}</td>
                             <td class="text-end text-muted">{{ money($registro->tax) }}</td>
                             <td class="text-end fw-semibold">{{ money($registro->total) }}</td>
-                            <td>{!! badge($registro->status) !!}</td>
+                            <td>
+                                {!! badge($registro->status) !!}
+                                @if ($registro->isOverduePartial())
+                                    <span class="badge bg-danger ms-1">Parcial vencida</span>
+                                @endif
+                            </td>
                             <td class="text-end">
                                 <div class="btn-group btn-group-sm">
                                     <a href="{{ route('purchases.show', $registro) }}" class="btn btn-outline-secondary" title="Ver detalle">

@@ -10,12 +10,12 @@ use App\Http\Controllers\KitchenController;
 use App\Http\Controllers\MenuCategoryController;
 use App\Http\Controllers\MenuItemController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReservationController;
 use App\Http\Controllers\RestaurantTableController;
 use App\Http\Controllers\ShiftController;
 use App\Http\Controllers\SupplierController;
-use App\Http\Controllers\PurchaseOrderController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -87,6 +87,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/{table}', [RestaurantTableController::class, 'show'])->name('show');
         Route::get('/{table}/edit', [RestaurantTableController::class, 'edit'])->name('edit');
         Route::put('/{table}', [RestaurantTableController::class, 'update'])->name('update');
+        Route::patch('/{table}/ready', [RestaurantTableController::class, 'ready'])->name('ready');
         Route::delete('/{table}', [RestaurantTableController::class, 'destroy'])->name('destroy');
     });
 
@@ -185,6 +186,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/{order}/edit', [OrderController::class, 'edit'])->name('edit');
         Route::put('/{order}', [OrderController::class, 'update'])->name('update');
         Route::post('/{order}/add-items', [OrderController::class, 'addItems'])->name('add-items');
+        Route::match(['post', 'patch'], '/{order}/cancel', [OrderController::class, 'cancel'])->name('cancel');
         Route::patch('/{orderItem}/item-status', [OrderController::class, 'updateItemStatus'])->name('item-status');
         Route::delete('/{order}', [OrderController::class, 'destroy'])->name('destroy');
     });
@@ -199,6 +201,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/', [BillsController::class, 'index'])->name('index');
         Route::get('/create', [BillsController::class, 'create'])->name('create');
         Route::post('/', [BillsController::class, 'store'])->name('store');
+        Route::put('/{bill}', [BillsController::class, 'update'])->name('update');
         Route::get('/{bill}', [BillsController::class, 'show'])->name('show');
         Route::post('/{bill}/pay', [BillsController::class, 'pay'])->name('pay');
         Route::delete('/{bill}', [BillsController::class, 'destroy'])->name('destroy');
@@ -234,6 +237,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/{purchase}/edit', [PurchaseOrderController::class, 'edit'])->name('edit');
         Route::put('/{purchase}', [PurchaseOrderController::class, 'update'])->name('update');
         Route::post('/{purchase}/receive', [PurchaseOrderController::class, 'receive'])->name('receive');
+        Route::post('/{purchase}/close', [PurchaseOrderController::class, 'close'])->name('close');
         Route::delete('/{purchase}', [PurchaseOrderController::class, 'destroy'])->name('destroy');
     });
 

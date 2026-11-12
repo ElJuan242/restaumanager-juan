@@ -4,6 +4,42 @@
 @section('breadcrumb', 'Resumen general del restaurante')
 
 @section('content')
+    {{-- Alerta de mesas con retraso en limpieza (RN-03 / RF-47) --}}
+    @if ($mesasLimpiezaRetrasada->isNotEmpty())
+        <div class="alert alert-warning border-warning shadow-sm mb-4" role="alert">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="rounded-circle bg-warning bg-opacity-25 p-2 text-warning d-flex align-items-center justify-content-center" style="width:44px;height:44px;">
+                        <i class="bi bi-clock-history fs-4"></i>
+                    </div>
+                    <div>
+                        <h6 class="mb-0 fw-bold">Alerta de rotación: {{ $mesasLimpiezaRetrasada->count() }} mesa(s) con más de {{ $umbralLimpiezaMinutos }} minutos en limpieza</h6>
+                        <small class="text-muted">Las siguientes mesas superaron el tiempo estándar de rotación y requieren atención para volver a estar disponibles:</small>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach ($mesasLimpiezaRetrasada as $mesaRetrasada)
+                        <div class="btn-group btn-group-sm shadow-sm">
+                            <a href="{{ route('tables.show', $mesaRetrasada) }}" class="btn btn-outline-dark fw-semibold" title="Ver detalle de mesa">
+                                Mesa {{ $mesaRetrasada->table_number }}
+                                <span class="badge bg-warning text-dark ms-1">
+                                    {{ $mesaRetrasada->cleaning_started_at?->diffForHumans(null, true) }}
+                                </span>
+                            </a>
+                            <form method="POST" action="{{ route('tables.ready', $mesaRetrasada) }}" class="d-inline">
+                                @csrf
+                                @method('PATCH')
+                                <button type="submit" class="btn btn-success" title="Confirmar que la mesa {{ $mesaRetrasada->table_number }} está limpia y disponible">
+                                    <i class="bi bi-check-lg me-1"></i>Lista
+                                </button>
+                            </form>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    @endif
+
     {{-- Tarjetas principales --}}
     <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3">
@@ -51,7 +87,7 @@
                     <div>
                         <div class="rm-stat-label">Mesas</div>
                         <div class="rm-stat-value">{{ $mesasDisponibles }}<span class="fs-6 opacity-75">/{{ $totalMesas }}</span></div>
-                        <div class="small opacity-75">disponibles</div>
+                        <div class="small opacity-75">disponibles @if ($mesasEnLimpieza > 0) · {{ $mesasEnLimpieza }} por limpiar @endif</div>
                     </div>
                     <i class="bi bi-grid-3x3-gap rm-stat-icon"></i>
                 </div>
@@ -236,3 +272,14 @@
         </div>
     </div>
 @endsection
+
+@push('scripts')
+<script>
+    // Actualización automática del dashboard cada 60 segundos.
+    setTimeout(function () {
+        if (! document.hidden) {
+            window.location.reload();
+        }
+    }, 60000);
+</script>
+@endpush

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TableStatus;
 use App\Models\Bill;
 use App\Models\InventoryItem;
 use App\Models\Order;
@@ -14,12 +15,25 @@ class DashboardController extends Controller
     public function index(): View
     {
         $mesasDisponibles = RestaurantTable::active()->available()->count();
+        $umbralLimpiezaMinutos = (int) config('restauranager.reservation_turnover_buffer_minutes', 15);
+
+        $mesasLimpiezaRetrasada = RestaurantTable::active()
+            ->where('status', TableStatus::Cleaning->value)
+            ->whereNotNull('cleaning_started_at')
+            ->where('cleaning_started_at', '<=', now()->subMinutes($umbralLimpiezaMinutos))
+            ->orderBy('cleaning_started_at')
+            ->get();
 
         return view('dashboard.index', [
+            // Alerta de limpieza
+            'mesasLimpiezaRetrasada' => $mesasLimpiezaRetrasada,
+            'umbralLimpiezaMinutos' => $umbralLimpiezaMinutos,
+            'mesasEnLimpieza' => RestaurantTable::active()->where('status', TableStatus::Cleaning->value)->count(),
+
             // Tarjetas principales
             'totalInventario' => InventoryItem::active()->count(),
             'stockBajo' => InventoryItem::active()->lowStock()->count(),
-            'reservasHoy' => Reservation::whereDate('reservation_date', today())
+            'reservasHoy' => Reservation::whereDate('reservation_date', today('America/Bogota'))
                 ->whereNotIn('status', ['cancelled'])
                 ->count(),
             'totalMesas' => RestaurantTable::active()->count(),
@@ -33,8 +47,7 @@ class DashboardController extends Controller
 
             // Listas
             'reservasProximas' => Reservation::with('table')
-                ->where('reservation_date', '>=', now()->startOfDay())
-                ->whereNotIn('status', ['cancelled', 'completed'])
+                ->upcoming()
                 ->orderBy('reservation_date')
                 ->take(6)
                 ->get(),

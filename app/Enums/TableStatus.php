@@ -8,6 +8,7 @@ enum TableStatus: string
     case Occupied = 'occupied';
     case Reserved = 'reserved';
     case Maintenance = 'maintenance';
+    case Cleaning = 'cleaning';
 
     public static function options(): array
     {
@@ -26,6 +27,7 @@ enum TableStatus: string
             self::Occupied => 'Ocupada',
             self::Reserved => 'Reservada',
             self::Maintenance => 'Mantenimiento',
+            self::Cleaning => 'Por limpiar',
         };
     }
 
@@ -36,6 +38,7 @@ enum TableStatus: string
             self::Occupied => 'bg-danger',
             self::Reserved => 'bg-warning text-dark',
             self::Maintenance => 'bg-secondary',
+            self::Cleaning => 'bg-info text-dark',
         };
     }
 }

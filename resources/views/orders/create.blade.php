@@ -31,8 +31,15 @@
                                 <select name="restaurant_table_id" id="restaurant_table_id" class="form-select @error('restaurant_table_id') is-invalid @enderror">
                                     <option value="">Sin mesa</option>
                                     @foreach ($mesas as $mesa)
-                                        <option value="{{ $mesa->id }}" @selected((string) old('restaurant_table_id') === (string) $mesa->id)>
+                                        <option value="{{ $mesa->id }}"
+                                                @selected((string) old('restaurant_table_id') === (string) $mesa->id)
+                                                @disabled(! $mesa->isAssignableToOrder())>
                                             {{ $mesa->table_number }} · {{ $mesa->locationEnum()->label() }}
+                                            @if (! $mesa->isAssignableToOrder())
+                                                ({{ $mesa->status->label() }} - No disponible)
+                                            @else
+                                                ({{ $mesa->status->label() }})
+                                            @endif
                                         </option>
                                     @endforeach
                                 </select>
@@ -132,7 +139,7 @@
                                         <th class="text-end" style="width: 140px;">Precio unit.</th>
                                         <th style="width: 110px;">Cantidad</th>
                                         <th style="min-width: 160px;">Notas</th>
-                                        <th class="text-end" style="width: 120px;">Subtotal</th>
+                                        <th class="text-end" style="width: 120px;">Importe</th>
                                         <th style="width: 50px;"></th>
                                     </tr>
                                 </thead>
@@ -160,12 +167,16 @@
                             <dt class="col-7 text-muted">Subtotal</dt>
                             <dd class="col-5 text-end" id="resumenSubtotal">{{ money(0) }}</dd>
 
-                            <dt class="col-7 text-muted">IVA ({{ pct(19) }})</dt>
+                            <dt class="col-7 text-muted">IVA incluido ({{ pct(config('restauranager.tax_rate', 0.19) * 100) }})</dt>
                             <dd class="col-5 text-end" id="resumenIva">{{ money(0) }}</dd>
 
                             <dt class="col-7 fw-bold fs-5">Total</dt>
                             <dd class="col-5 text-end fw-bold fs-5" id="resumenTotal">{{ money(0) }}</dd>
                         </dl>
+
+                        <div class="small text-muted mb-3">
+                            <i class="bi bi-info-circle me-1"></i>Los precios del menú incluyen IVA.
+                        </div>
 
                         <hr>
 
@@ -184,7 +195,7 @@
 
 @push('scripts')
 <script>
-    const IVA = 0.19;
+    const IVA = {{ (float) config('restauranager.tax_rate', 0.19) }};
 
     @php
         $platosJson = $platos->map(function ($p) {
@@ -208,7 +219,7 @@
     const selectorPlato = document.getElementById('selectorPlato');
 
     function actualizarResumen() {
-        let subtotal = 0;
+        let total = 0;
 
         itemsBody.querySelectorAll('tr.item-row').forEach((row) => {
             const precio = parseFloat(row.querySelector('.input-precio').value) || 0;
@@ -216,14 +227,15 @@
             const linea = precio * cantidad;
 
             row.querySelector('.celda-subtotal').textContent = moneyFmt(linea);
-            subtotal += linea;
+            total += linea;
         });
 
-        const iva = subtotal * IVA;
+        const subtotal = Math.round(total / (1 + IVA));
+        const iva = total - subtotal;
 
         document.getElementById('resumenSubtotal').textContent = moneyFmt(subtotal);
         document.getElementById('resumenIva').textContent = moneyFmt(iva);
-        document.getElementById('resumenTotal').textContent = moneyFmt(subtotal + iva);
+        document.getElementById('resumenTotal').textContent = moneyFmt(total);
 
         if (itemsBody.querySelectorAll('tr.item-row').length > 0) {
             filaVacia.style.display = 'none';
@@ -253,7 +265,7 @@
                 <input type="number" class="form-control form-control-sm text-end input-precio" step="0.01" min="0" value="${priceFmt(plato.price)}">
             </td>
             <td>
-                <input type="number" class="form-control form-control-sm input-cantidad" min="1" step="1" value="${cantidad}" required>
+                <input type="number" class="form-control form-control-sm input-cantidad" name="items[${idx}][quantity]" min="1" step="1" value="${cantidad}" required>
             </td>
             <td>
                 <input type="text" class="form-control form-control-sm input-notas" name="items[${idx}][notes]" placeholder="Sin cebolla...">

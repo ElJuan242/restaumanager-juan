@@ -10,11 +10,17 @@
             <form method="GET" action="{{ route('reports.index') }}" class="row g-2 align-items-end">
                 <div class="col-md-3">
                     <label class="form-label small fw-semibold">Desde</label>
-                    <input type="date" name="from" value="{{ $from }}" class="form-control">
+                    <input type="date" name="from" value="{{ old('from', $from) }}" class="form-control @error('from') is-invalid @enderror">
+                    @error('from')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small fw-semibold">Hasta</label>
-                    <input type="date" name="to" value="{{ $to }}" class="form-control">
+                    <input type="date" name="to" value="{{ old('to', $to) }}" class="form-control @error('to') is-invalid @enderror">
+                    @error('to')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
                 </div>
                 <div class="col-md-2">
                     <button type="submit" class="btn btn-dark w-100">
@@ -25,6 +31,7 @@
                     <a href="{{ route('reports.index') }}" class="btn btn-outline-secondary">
                         <i class="bi bi-arrow-counterclockwise me-1"></i>Últimos 30 días
                     </a>
+                    <div class="small text-muted mt-1">Rango máximo: 365 días.</div>
                 </div>
             </form>
         </div>

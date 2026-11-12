@@ -55,7 +55,7 @@
                         <th>Orden</th>
                         <th>Cliente</th>
                         <th class="text-end">Subtotal</th>
-                        <th class="text-end">IVA</th>
+                        <th class="text-end">IVA incluido</th>
                         <th class="text-end">Servicio</th>
                         <th class="text-end">Descuento</th>
                         <th class="text-end">Total</th>
@@ -86,7 +86,14 @@
                             <td>{{ $registro->customer?->name ?? '—' }}</td>
                             <td class="text-end">{{ money($registro->subtotal) }}</td>
                             <td class="text-end">{{ money($registro->tax) }}</td>
-                            <td class="text-end">{{ money($registro->service_charge) }}</td>
+                            <td class="text-end">
+                                {{ money($registro->service_charge) }}
+                                @if ($registro->service_charge_waived)
+                                    <div class="small text-muted">Exento</div>
+                                @elseif ($registro->service_charge_percent > 0)
+                                    <div class="small text-muted">{{ pct($registro->service_charge_percent, 2) }}</div>
+                                @endif
+                            </td>
                             <td class="text-end">{{ money($registro->discount) }}</td>
                             <td class="text-end fw-semibold">{{ money($registro->total) }}</td>
                             <td class="text-end text-success">{{ money($registro->paidAmount()) }}</td>

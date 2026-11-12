@@ -16,11 +16,13 @@ class User extends Authenticatable
         'password',
         'role',
         'active',
+        'admin_pin',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+        'admin_pin',
     ];
 
     protected function casts(): array
@@ -29,6 +31,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'active' => 'boolean',
+            'admin_pin' => 'hashed',
         ];
     }
 
@@ -40,5 +43,10 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return (bool) $this->active;
+    }
+
+    public function hasAdminPin(): bool
+    {
+        return ! empty($this->admin_pin);
     }
 }

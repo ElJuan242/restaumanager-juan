@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Administrador',
                 'password' => 'admin123',
+                'admin_pin' => '123456',
                 'role' => 'admin',
                 'active' => true,
             ]

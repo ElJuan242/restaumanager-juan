@@ -38,6 +38,32 @@
         @enderror
     </div>
 
+    <div class="col-md-3">
+        <label for="duration_minutes" class="form-label fw-semibold">Duración <span class="text-danger">*</span></label>
+        <select name="duration_minutes" id="duration_minutes"
+                class="form-select @error('duration_minutes') is-invalid @enderror">
+            @foreach (range(30, 480, 15) as $min)
+                <option value="{{ $min }}" @selected((int) old('duration_minutes', $registro?->duration_minutes ?? config('restauranager.reservation_duration_minutes', 120)) === $min)>
+                    @if (intdiv($min, 60) > 0 && $min % 60 > 0)
+                        {{ intdiv($min, 60) }} h {{ $min % 60 }} min
+                    @elseif (intdiv($min, 60) > 0)
+                        {{ intdiv($min, 60) }} h
+                    @else
+                        {{ $min }} min
+                    @endif
+                </option>
+            @endforeach
+        </select>
+        @error('duration_minutes')
+            <div class="invalid-feedback">{{ $message }}</div>
+        @enderror
+        <div class="form-text text-muted" id="previewFinReserva">
+            @if ($registro?->reservation_end)
+                Fin estimado: {{ time_es($registro->reservation_end) }}
+            @endif
+        </div>
+    </div>
+
     <div class="col-md-2">
         <label for="people_count" class="form-label fw-semibold">Personas <span class="text-danger">*</span></label>
         <input type="number" name="people_count" id="people_count" min="1" step="1"
@@ -86,3 +112,38 @@
         @enderror
     </div>
 </div>
+
+@push('scripts')
+<script>
+(function () {
+    const inputFecha    = document.getElementById('reservation_date');
+    const selectDuracion = document.getElementById('duration_minutes');
+    const previewDiv    = document.getElementById('previewFinReserva');
+
+    if (!inputFecha || !selectDuracion || !previewDiv) return;
+
+    function actualizarPreview() {
+        const fechaVal = inputFecha.value;
+        const duracion = parseInt(selectDuracion.value, 10);
+
+        if (!fechaVal || isNaN(duracion)) {
+            previewDiv.textContent = '';
+            return;
+        }
+
+        const inicio = new Date(fechaVal);
+        const fin    = new Date(inicio.getTime() + duracion * 60 * 1000);
+
+        // Formato hh:mm am/pm legible (Colombia / 12h)
+        const opciones = { hour: '2-digit', minute: '2-digit', hour12: true };
+        previewDiv.textContent = 'Fin estimado: ' + fin.toLocaleTimeString('es-CO', opciones);
+    }
+
+    inputFecha.addEventListener('change', actualizarPreview);
+    selectDuracion.addEventListener('change', actualizarPreview);
+
+    // Ejecutar al cargar si ya hay valores (edición)
+    actualizarPreview();
+})();
+</script>
+@endpush

@@ -72,7 +72,7 @@
                                 <th>Plato</th>
                                 <th class="text-center">Cant.</th>
                                 <th class="text-end">Precio unit.</th>
-                                <th class="text-end">Subtotal</th>
+                                <th class="text-end">Importe</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -150,10 +150,17 @@
                         <dt class="col-7 text-muted">Subtotal</dt>
                         <dd class="col-5 text-end">{{ money($registro->subtotal) }}</dd>
 
-                        <dt class="col-7 text-muted">IVA</dt>
+                        <dt class="col-7 text-muted">IVA incluido</dt>
                         <dd class="col-5 text-end">{{ money($registro->tax) }}</dd>
 
-                        <dt class="col-7 text-muted">Cargo por servicio</dt>
+                        <dt class="col-7 text-muted">
+                            Cargo por servicio
+                            @if ($registro->service_charge_waived)
+                                <span class="badge bg-secondary">Exento</span>
+                            @elseif ($registro->service_charge_percent > 0)
+                                ({{ pct($registro->service_charge_percent, 2) }})
+                            @endif
+                        </dt>
                         <dd class="col-5 text-end">{{ money($registro->service_charge) }}</dd>
 
                         <dt class="col-7 text-muted">Descuento</dt>
@@ -170,10 +177,78 @@
                             {{ money($registro->balance()) }}
                         </dd>
                     </dl>
+
+                    <div class="small text-muted mt-2">
+                        <i class="bi bi-info-circle me-1"></i>Los precios del menú incluyen IVA.
+                    </div>
                 </div>
             </div>
 
-            @if (! $registro->isFullyPaid())
+            @if ($registro->isAdjustable())
+                <div class="card rm-card mb-3">
+                    <div class="rm-card-header"><i class="bi bi-sliders me-2"></i>Ajustes de la factura</div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ route('bills.update', $registro) }}">
+                            @csrf
+                            @method('PUT')
+
+                            <div class="mb-3">
+                                <label for="service_charge_percent" class="form-label fw-semibold">Cargo por servicio (%)</label>
+                                <div class="input-group">
+                                    <input type="number" name="service_charge_percent" id="service_charge_percent"
+                                           step="0.01" min="0" max="{{ \App\Models\Bill::maxServiceChargePercent() }}"
+                                           class="form-control @error('service_charge_percent') is-invalid @enderror"
+                                           value="{{ old('service_charge_percent', $registro->service_charge_percent) }}"
+                                           @disabled($registro->service_charge_waived)>
+                                    <span class="input-group-text bg-light">%</span>
+                                    @error('service_charge_percent')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                                <div class="form-text">
+                                    Puedes reducirlo entre 0% y {{ pct(\App\Models\Bill::maxServiceChargePercent()) }}.
+                                </div>
+                            </div>
+
+                            <div class="form-check mb-3">
+                                <input type="hidden" name="service_charge_waived" value="0">
+                                <input type="checkbox" name="service_charge_waived" id="service_charge_waived" value="1"
+                                       class="form-check-input @error('service_charge_waived') is-invalid @enderror"
+                                       @checked(old('service_charge_waived', $registro->service_charge_waived))>
+                                <label for="service_charge_waived" class="form-check-label">Eximir cargo por servicio</label>
+                                @error('service_charge_waived')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="discount" class="form-label fw-semibold">Descuento</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light">$</span>
+                                    <input type="number" name="discount" id="discount" step="0.01" min="0"
+                                           max="{{ $registro->consumption() }}"
+                                           class="form-control @error('discount') is-invalid @enderror"
+                                           value="{{ old('discount', $registro->discount) }}">
+                                    @error('discount')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                                <div class="form-text">No puede superar el consumo de la orden ({{ money($registro->consumption()) }}).</div>
+                            </div>
+
+                            <button type="submit" class="btn btn-outline-primary w-100">
+                                <i class="bi bi-save me-1"></i>Guardar ajustes
+                            </button>
+
+                            <div class="small text-muted mt-2">
+                                <i class="bi bi-info-circle me-1"></i>Solo puedes ajustar el descuento y el cargo por servicio antes del primer pago.
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            @endif
+
+            @if ($registro->isPayable())
                 <div class="card rm-card">
                     <div class="rm-card-header"><i class="bi bi-cash-coin me-2"></i>Registrar pago</div>
                     <div class="card-body">
@@ -231,6 +306,14 @@
                         </form>
                     </div>
                 </div>
+            @elseif ($registro->isVoid() || $registro->isCancelled())
+                <div class="card rm-card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-slash-circle text-danger" style="font-size: 2.5rem;"></i>
+                        <p class="mb-0 fw-semibold">Factura {{ mb_strtolower($registro->status->label()) }}</p>
+                        <div class="small text-muted">Esta factura no admite pagos.</div>
+                    </div>
+                </div>
             @else
                 <div class="card rm-card">
                     <div class="card-body text-center">
@@ -266,6 +349,20 @@
     if (metodoSelect) {
         metodoSelect.addEventListener('change', actualizarReferencia);
         actualizarReferencia();
+    }
+
+    const ajusteExento = document.getElementById('service_charge_waived');
+    const ajustePorcentaje = document.getElementById('service_charge_percent');
+
+    function actualizarAjusteServicio() {
+        if (! ajusteExento || ! ajustePorcentaje) return;
+
+        ajustePorcentaje.disabled = ajusteExento.checked;
+    }
+
+    if (ajusteExento) {
+        ajusteExento.addEventListener('change', actualizarAjusteServicio);
+        actualizarAjusteServicio();
     }
 </script>
 @endpush

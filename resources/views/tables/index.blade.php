@@ -93,7 +93,14 @@
                                 <span class="badge bg-light text-dark border">{{ $mesa->capacity }} personas</span>
                             </td>
                             <td>{!! badge($mesa->locationEnum()) !!}</td>
-                            <td>{!! badge($mesa->status) !!}</td>
+                            <td>
+                                {!! badge($mesa->status) !!}
+                                @if ($mesa->status === \App\Enums\TableStatus::Cleaning && $mesa->isDelayedCleaning())
+                                    <span class="badge bg-danger ms-1" title="Más de 15 minutos en limpieza">
+                                        <i class="bi bi-clock-history"></i> Retrasada
+                                    </span>
+                                @endif
+                            </td>
                             <td>
                                 @if ($mesa->is_active)
                                     <span class="badge bg-success">Activa</span>
@@ -102,17 +109,28 @@
                                 @endif
                             </td>
                             <td class="text-end">
-                                <div class="btn-group btn-group-sm">
-                                    <a href="{{ route('tables.show', $mesa) }}" class="btn btn-outline-secondary" title="Ver detalle">
-                                        <i class="bi bi-eye"></i>
-                                    </a>
-                                    <a href="{{ route('tables.edit', $mesa) }}" class="btn btn-outline-primary" title="Editar">
-                                        <i class="bi bi-pencil"></i>
-                                    </a>
-                                    <button type="button" class="btn btn-outline-danger" title="Eliminar"
-                                            data-bs-toggle="modal" data-bs-target="#modalEliminar{{ $mesa->id }}">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
+                                <div class="d-inline-flex align-items-center gap-1">
+                                    @if ($mesa->status === \App\Enums\TableStatus::Cleaning)
+                                        <form method="POST" action="{{ route('tables.ready', $mesa) }}" class="d-inline">
+                                            @csrf
+                                            @method('PATCH')
+                                            <button type="submit" class="btn btn-sm btn-success" title="Marcar mesa como lista y disponible">
+                                                <i class="bi bi-check2-circle me-1"></i>Mesa lista
+                                            </button>
+                                        </form>
+                                    @endif
+                                    <div class="btn-group btn-group-sm">
+                                        <a href="{{ route('tables.show', $mesa) }}" class="btn btn-outline-secondary" title="Ver detalle">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                        <a href="{{ route('tables.edit', $mesa) }}" class="btn btn-outline-primary" title="Editar">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        <button type="button" class="btn btn-outline-danger" title="Eliminar"
+                                                data-bs-toggle="modal" data-bs-target="#modalEliminar{{ $mesa->id }}">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </td>
                         </tr>

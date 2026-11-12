@@ -2,17 +2,22 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\InventoryMovementType;
 use App\Enums\PurchaseOrderStatus;
 use App\Models\InventoryItem;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\Supplier;
+use App\Services\AdminPinService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PurchaseOrderController extends Controller
 {
+    public function __construct(private AdminPinService $adminPinService) {}
+
     /**
      * Listado con búsqueda por número, filtro por estado y por proveedor.
      */
@@ -44,7 +49,7 @@ class PurchaseOrderController extends Controller
         return view('purchases.create', [
             'proveedores' => Supplier::where('is_active', true)->orderBy('name')->get(),
             'insumos' => InventoryItem::orderBy('name')->get(),
-            'estados' => PurchaseOrderStatus::options(),
+            'estados' => $this->estadosEditables(),
         ]);
     }
 
@@ -75,7 +80,7 @@ class PurchaseOrderController extends Controller
 
     public function show(PurchaseOrder $purchase)
     {
-        $purchase->load(['supplier', 'items.inventory']);
+        $purchase->load(['supplier', 'items.inventory', 'closedBy']);
 
         return view('purchases.show', [
             'orden' => $purchase,
@@ -87,7 +92,7 @@ class PurchaseOrderController extends Controller
         if ($purchase->isLocked()) {
             return redirect()
                 ->route('purchases.show', $purchase)
-                ->with('error', 'No se puede editar una orden de compra recibida o cancelada.');
+                ->with('error', 'No se puede editar una orden de compra en estado '.$purchase->status->label().'.');
         }
 
         $purchase->load('items');
@@ -96,7 +101,7 @@ class PurchaseOrderController extends Controller
             'registro' => $purchase,
             'proveedores' => Supplier::where('is_active', true)->orderBy('name')->get(),
             'insumos' => InventoryItem::orderBy('name')->get(),
-            'estados' => PurchaseOrderStatus::options(),
+            'estados' => $this->estadosEditables(),
         ]);
     }
 
@@ -105,7 +110,7 @@ class PurchaseOrderController extends Controller
         if ($purchase->isLocked()) {
             return redirect()
                 ->route('purchases.show', $purchase)
-                ->with('error', 'No se puede editar una orden de compra recibida o cancelada.');
+                ->with('error', 'No se puede editar una orden de compra en estado '.$purchase->status->label().'.');
         }
 
         $this->validar($request);
@@ -142,7 +147,7 @@ class PurchaseOrderController extends Controller
         if ($purchase->isLocked()) {
             return redirect()
                 ->route('purchases.show', $purchase)
-                ->with('error', 'No se puede recibir una orden de compra recibida o cancelada.');
+                ->with('error', 'No se puede recibir una orden de compra en estado '.$purchase->status->label().'.');
         }
 
         $request->validate([
@@ -178,6 +183,14 @@ class PurchaseOrderController extends Controller
 
                 if ($item->inventory) {
                     $item->inventory->adjustQuantity($cantidad);
+
+                    $item->inventory->recordMovement(
+                        InventoryMovementType::PurchaseReceipt,
+                        $cantidad,
+                        'Recepción de compra '.$purchase->po_number,
+                        $purchase,
+                        auth()->id()
+                    );
                 }
 
                 $item->update(['received_qty' => $item->received_qty + $cantidad]);
@@ -211,12 +224,94 @@ class PurchaseOrderController extends Controller
         return redirect()->route('purchases.show', $purchase)->with('success', $mensaje);
     }
 
+    /**
+     * Cierra forzosamente una orden parcial (RN-07).
+     *
+     * El inventario no se modifica: solo se cierra la orden con lo recibido,
+     * recalculando el total sobre received_qty x unit_price + IVA 19%.
+     */
+    public function close(Request $request, PurchaseOrder $purchase): RedirectResponse
+    {
+        if ($purchase->status !== PurchaseOrderStatus::Partial) {
+            return redirect()
+                ->route('purchases.show', $purchase)
+                ->with('error', 'Solo se pueden cerrar forzosamente las órdenes de compra en estado parcial.');
+        }
+
+        $request->merge([
+            'closed_reason' => trim((string) $request->input('closed_reason')),
+            'pin' => trim((string) $request->input('pin')),
+        ]);
+
+        $data = $request->validate([
+            'closed_reason' => ['required', 'string', 'max:500'],
+            'pin' => ['required', 'string', 'max:20'],
+        ], [
+            'closed_reason.required' => 'Debes indicar el motivo del cierre forzoso.',
+            'closed_reason.max' => 'El motivo del cierre no puede superar los 500 caracteres.',
+            'pin.required' => 'Debes ingresar el PIN de administrador para cerrar la orden.',
+            'pin.max' => 'El PIN de administrador no es válido.',
+        ], [
+            'closed_reason' => 'motivo del cierre',
+            'pin' => 'PIN de administrador',
+        ]);
+
+        try {
+            DB::transaction(function () use ($purchase, $data) {
+                $bloqueada = PurchaseOrder::query()
+                    ->whereKey($purchase->getKey())
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($bloqueada->status !== PurchaseOrderStatus::Partial) {
+                    throw ValidationException::withMessages([
+                        'closed_reason' => 'Solo se pueden cerrar forzosamente las órdenes de compra en estado parcial.',
+                    ]);
+                }
+
+                $admin = $this->adminPinService->verify(
+                    $data['pin'],
+                    'purchase_close_'.$bloqueada->getKey()
+                );
+
+                if (! $admin) {
+                    throw ValidationException::withMessages([
+                        'pin' => 'PIN de administrador inválido.',
+                    ]);
+                }
+
+                $bloqueada->forceFill([
+                    'status' => PurchaseOrderStatus::Closed->value,
+                    'closed_by' => $admin->getKey(),
+                    'closed_at' => now(),
+                    'closed_reason' => $data['closed_reason'],
+                ])->save();
+
+                $bloqueada->recalculateTotalsFromReceived();
+            });
+        } catch (ValidationException $e) {
+            return redirect()
+                ->route('purchases.show', $purchase)
+                ->withErrors($e->errors())
+                ->withInput();
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('purchases.show', $purchase)
+                ->with('error', 'No se pudo cerrar la orden de compra. Intenta de nuevo.')
+                ->withInput();
+        }
+
+        return redirect()
+            ->route('purchases.show', $purchase)
+            ->with('success', 'Orden de compra '.$purchase->po_number.' cerrada forzosamente.');
+    }
+
     public function destroy(PurchaseOrder $purchase): RedirectResponse
     {
         if ($purchase->isLocked()) {
             return redirect()
                 ->route('purchases.show', $purchase)
-                ->with('error', 'No se puede eliminar una orden de compra recibida o cancelada.');
+                ->with('error', 'No se puede eliminar una orden de compra en estado '.$purchase->status->label().'.');
         }
 
         $numero = $purchase->po_number;
@@ -255,6 +350,18 @@ class PurchaseOrderController extends Controller
     }
 
     /**
+     * Estados seleccionables manualmente. El estado cerrada solo se aplica
+     * mediante la acción de cierre forzoso con PIN de administrador.
+     */
+    private function estadosEditables(): array
+    {
+        $estados = PurchaseOrderStatus::options();
+        unset($estados[PurchaseOrderStatus::Closed->value]);
+
+        return $estados;
+    }
+
+    /**
      * Reglas compartidas de validación del módulo.
      */
     private function validar(Request $request): array
@@ -263,7 +370,7 @@ class PurchaseOrderController extends Controller
             'supplier_id' => ['required', 'exists:suppliers,id'],
             'order_date' => ['required', 'date'],
             'expected_date' => ['nullable', 'date', 'after_or_equal:order_date'],
-            'status' => ['nullable', 'in:'.implode(',', array_keys(PurchaseOrderStatus::options()))],
+            'status' => ['nullable', 'in:'.implode(',', array_keys($this->estadosEditables()))],
             'notes' => ['nullable', 'string'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.inventory_id' => ['required', 'exists:inventory,id'],

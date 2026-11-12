@@ -6,6 +6,7 @@ use App\Enums\ReservationStatus;
 use App\Enums\TableStatus;
 use App\Models\Reservation;
 use App\Models\RestaurantTable;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,20 +49,19 @@ class ReservationController extends Controller
     {
         $data = $this->validar($request);
 
+        $reserva = new Reservation($data);
+        $errores = $reserva->validateTableErrors();
+
+        if ($errores !== []) {
+            return redirect()->route('reservations.create')
+                ->withErrors($errores)
+                ->withInput();
+        }
+
         DB::beginTransaction();
 
         try {
-            $reserva = Reservation::create($data);
-            $error = $reserva->validateTable();
-
-            if ($error !== null) {
-                DB::rollBack();
-
-                return redirect()->route('reservations.create')
-                    ->with('error', $error)
-                    ->withInput();
-            }
-
+            $reserva->save();
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -94,22 +94,21 @@ class ReservationController extends Controller
 
     public function update(Request $request, Reservation $reservation): RedirectResponse
     {
-        $data = $this->validar($request, $reservation);
+        $data = $this->validar($request);
+
+        $reservation->fill($data);
+        $errores = $reservation->validateTableErrors();
+
+        if ($errores !== []) {
+            return redirect()->route('reservations.edit', $reservation)
+                ->withErrors($errores)
+                ->withInput();
+        }
 
         DB::beginTransaction();
 
         try {
-            $reservation->update($data);
-            $error = $reservation->validateTable();
-
-            if ($error !== null) {
-                DB::rollBack();
-
-                return redirect()->route('reservations.edit', $reservation)
-                    ->with('error', $error)
-                    ->withInput();
-            }
-
+            $reservation->save();
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -173,13 +172,34 @@ class ReservationController extends Controller
     /**
      * Reglas compartidas de validación del módulo.
      */
-    private function validar(Request $request, ?Reservation $registro = null): array
+    private function validar(Request $request): array
     {
+        $defaultDuration = (int) config('restauranager.reservation_duration_minutes', 120);
+
         $data = $request->validate([
             'client_name' => ['required', 'string', 'max:255'],
             'client_phone' => ['nullable', 'string', 'max:30'],
             'client_email' => ['nullable', 'email', 'max:255'],
-            'reservation_date' => ['required', 'date'],
+            'reservation_date' => [
+                'required',
+                'date',
+                function ($attribute, $value, $fail) {
+                    if (Carbon::parse($value)->isPast()) {
+                        $fail('La fecha y hora de inicio de la reserva no puede ser en el pasado.');
+                    }
+                },
+            ],
+            'duration_minutes' => [
+                'nullable',
+                'integer',
+                'min:30',
+                'max:480',
+                function ($attribute, $value, $fail) {
+                    if ($value && $value % 15 !== 0) {
+                        $fail('La duración debe ser un múltiplo de 15 minutos.');
+                    }
+                },
+            ],
             'people_count' => ['required', 'integer', 'min:1'],
             'restaurant_table_id' => ['nullable', 'exists:restaurant_tables,id'],
             'status' => ['required', 'in:'.implode(',', array_keys(ReservationStatus::options()))],
@@ -187,16 +207,28 @@ class ReservationController extends Controller
         ], [
             'people_count.min' => 'La reserva debe ser para al menos 1 persona.',
             'client_email.email' => 'El correo electrónico no es válido.',
+            'duration_minutes.min' => 'La duración mínima de la reserva es de 30 minutos.',
+            'duration_minutes.max' => 'La duración máxima de la reserva es de 480 minutos (8 horas).',
         ], [
             'client_name' => 'nombre del cliente',
             'client_phone' => 'teléfono',
             'client_email' => 'correo electrónico',
             'reservation_date' => 'fecha de la reserva',
+            'duration_minutes' => 'duración',
             'people_count' => 'número de personas',
             'restaurant_table_id' => 'mesa',
             'status' => 'estado',
             'notes' => 'notas',
         ]);
+
+        $duracion = ! empty($data['duration_minutes'])
+            ? (int) $data['duration_minutes']
+            : $defaultDuration;
+
+        $inicio = Carbon::parse($data['reservation_date']);
+
+        $data['duration_minutes'] = $duracion;
+        $data['reservation_end'] = $inicio->copy()->addMinutes($duracion);
 
         $data['people_count'] = (int) $data['people_count'];
         $data['restaurant_table_id'] = ! empty($data['restaurant_table_id']) ? (int) $data['restaurant_table_id'] : null;

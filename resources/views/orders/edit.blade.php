@@ -32,8 +32,17 @@
                                 <select name="restaurant_table_id" id="restaurant_table_id" class="form-select @error('restaurant_table_id') is-invalid @enderror">
                                     <option value="">Sin mesa</option>
                                     @foreach ($mesas as $mesa)
-                                        <option value="{{ $mesa->id }}" @selected((string) old('restaurant_table_id', $registro->restaurant_table_id) === (string) $mesa->id)>
+                                        @php($esActual = (int) $registro->restaurant_table_id === (int) $mesa->id)
+                                        @php($noAsignable = ! $esActual && ! $mesa->isAssignableToOrder())
+                                        <option value="{{ $mesa->id }}"
+                                                @selected((string) old('restaurant_table_id', $registro->restaurant_table_id) === (string) $mesa->id)
+                                                @disabled($noAsignable)>
                                             {{ $mesa->table_number }} · {{ $mesa->locationEnum()->label() }}
+                                            @if ($noAsignable)
+                                                ({{ $mesa->status->label() }} - No disponible)
+                                            @else
+                                                ({{ $mesa->status->label() }})
+                                            @endif
                                         </option>
                                     @endforeach
                                 </select>
@@ -110,7 +119,7 @@
                             <dt class="col-7 text-muted">Subtotal</dt>
                             <dd class="col-5 text-end">{{ money($registro->subtotal) }}</dd>
 
-                            <dt class="col-7 text-muted">IVA ({{ pct(19) }})</dt>
+                            <dt class="col-7 text-muted">IVA incluido ({{ pct(config('restauranager.tax_rate', 0.19) * 100) }})</dt>
                             <dd class="col-5 text-end">{{ money($registro->tax) }}</dd>
 
                             <dt class="col-7 fw-bold fs-5">Total</dt>
@@ -118,7 +127,7 @@
                         </dl>
 
                         <div class="small text-muted">
-                            <i class="bi bi-info-circle me-1"></i>Los items se añaden desde la ficha de la orden.
+                            <i class="bi bi-info-circle me-1"></i>Los precios del menú incluyen IVA. Los items se añaden desde la ficha de la orden.
                         </div>
                     </div>
                 </div>
@@ -141,7 +150,7 @@
                         <th>Plato</th>
                         <th class="text-center">Cantidad</th>
                         <th class="text-end">Precio unit.</th>
-                        <th class="text-end">Subtotal</th>
+                        <th class="text-end">Importe</th>
                         <th>Estado</th>
                         <th>Notas</th>
                     </tr>

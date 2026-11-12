@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Enums\InventoryCategory;
+use App\Enums\InventoryMovementType;
 use App\Models\InventoryItem;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class InventoryController extends Controller
 {
@@ -76,34 +79,77 @@ class InventoryController extends Controller
     }
 
     /**
-     * Suma o resta cantidad sin permitir stock negativo.
+     * Suma o resta cantidad y registra el movimiento manual.
+     * Rechaza el ajuste si el resultado deja el stock en negativo.
      */
     public function adjustQuantity(Request $request, InventoryItem $inventory): RedirectResponse
     {
         $request->validate([
             'action' => 'required|in:sum,subtract',
             'amount' => 'required|numeric|min:0.01|max:1000000',
+            'reason' => 'required|string|max:255',
             'return_to' => 'nullable|in:index,show',
         ], [
             'action.in' => 'Debes elegir sumar o restar.',
             'amount.min' => 'La cantidad a ajustar debe ser mayor que cero.',
+            'reason.required' => 'El motivo del ajuste es obligatorio.',
+            'reason.max' => 'El motivo no puede superar los 255 caracteres.',
+        ], [
+            'reason' => 'motivo',
         ]);
 
         $delta = $request->action === 'sum'
             ? (float) $request->amount
             : -1 * (float) $request->amount;
 
-        $anterior = $inventory->quantity;
-        $inventory->adjustQuantity($delta);
+        try {
+            $mensaje = DB::transaction(function () use ($inventory, $delta, $request) {
+                $bloqueado = InventoryItem::query()
+                    ->whereKey($inventory->getKey())
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-        $mensaje = sprintf('Stock de "%s": %s → %s %s.', $inventory->name, $anterior, $inventory->quantity, $inventory->unit);
+                $anterior = (float) $bloqueado->quantity;
+                $nuevo = round($anterior + $delta, 2);
 
-        if ($inventory->wasChanged('quantity') === false && $delta < 0) {
-            $mensaje = sprintf('No se puede dejar el stock en negativo. "%s" se mantiene en %s %s.', $inventory->name, $inventory->quantity, $inventory->unit);
+                if ($nuevo < 0) {
+                    throw ValidationException::withMessages([
+                        'amount' => sprintf(
+                            'El ajuste dejaría el stock en negativo. Disponible: %s %s.',
+                            number_format($anterior, 2, ',', '.'),
+                            $bloqueado->unit
+                        ),
+                    ]);
+                }
+
+                $bloqueado->forceFill(['quantity' => $nuevo])->save();
+
+                $bloqueado->recordMovement(
+                    InventoryMovementType::ManualAdjustment,
+                    $delta,
+                    $request->input('reason'),
+                    null,
+                    auth()->id()
+                );
+
+                return sprintf(
+                    'Stock de "%s": %s → %s %s. Motivo: %s.',
+                    $bloqueado->name,
+                    number_format($anterior, 2, ',', '.'),
+                    number_format($nuevo, 2, ',', '.'),
+                    $bloqueado->unit,
+                    $request->input('reason')
+                );
+            });
+        } catch (ValidationException $e) {
+            return redirect()
+                ->to($request->input('return_to') === 'show' ? route('inventory.show', $inventory) : route('inventory.index'))
+                ->withErrors($e->errors())
+                ->withInput();
         }
 
         return redirect()
-            ->route(($request->input('return_to') === 'show' ? 'inventory.show' : 'inventory.index'), $inventory)
+            ->to($request->input('return_to') === 'show' ? route('inventory.show', $inventory) : route('inventory.index'))
             ->with('success', $mensaje);
     }
 

@@ -86,6 +86,9 @@
                                 <a href="{{ route('menu-items.show', $registro) }}" class="fw-semibold text-decoration-none">
                                     {{ $registro->name }}
                                 </a>
+                                @if ((int) ($registro->recipe_items_count ?? 0) === 0)
+                                    <span class="badge bg-warning text-dark ms-1">sin receta</span>
+                                @endif
                                 @if ($registro->description)
                                     <div class="small text-muted text-truncate" style="max-width: 260px;">{{ $registro->description }}</div>
                                 @endif

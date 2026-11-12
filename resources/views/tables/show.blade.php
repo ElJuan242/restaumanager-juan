@@ -10,6 +10,15 @@
                 <div class="rm-card-header d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-grid-3x3-gap me-2"></i>Mesa {{ $registro->table_number }}</span>
                     <div class="d-flex gap-2">
+                        @if ($registro->status === \App\Enums\TableStatus::Cleaning)
+                            <form method="POST" action="{{ route('tables.ready', $registro) }}">
+                                @csrf
+                                @method('PATCH')
+                                <button type="submit" class="btn btn-sm btn-success">
+                                    <i class="bi bi-check2-circle me-1"></i>Mesa lista
+                                </button>
+                            </form>
+                        @endif
                         <a href="{{ route('tables.edit', $registro) }}" class="btn btn-sm btn-primary">
                             <i class="bi bi-pencil me-1"></i>Editar
                         </a>
@@ -28,6 +37,25 @@
                     @if ($registro->is_active && $registro->status->value === 'available')
                         <div class="alert alert-success py-2 mb-3">
                             <i class="bi bi-check-circle me-1"></i><strong>Disponible</strong> para recibir clientes.
+                        </div>
+                    @elseif ($registro->is_active && $registro->status->value === 'cleaning')
+                        <div class="alert alert-info py-2 mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <i class="bi bi-stars me-1"></i>Mesa en proceso de <strong>limpieza</strong>.
+                                @if ($registro->cleaning_started_at)
+                                    <span class="small d-block text-muted">Inició hace {{ $registro->cleaning_started_at->diffForHumans(null, true) }} ({{ time_es($registro->cleaning_started_at) }}).</span>
+                                @endif
+                                @if ($registro->isDelayedCleaning())
+                                    <span class="badge bg-danger mt-1">Superó el tiempo estándar de rotación (15 min)</span>
+                                @endif
+                            </div>
+                            <form method="POST" action="{{ route('tables.ready', $registro) }}">
+                                @csrf
+                                @method('PATCH')
+                                <button type="submit" class="btn btn-success btn-sm">
+                                    <i class="bi bi-check2-circle me-1"></i>Marcar lista
+                                </button>
+                            </form>
                         </div>
                     @elseif (! $registro->is_active)
                         <div class="alert alert-secondary py-2 mb-3">
@@ -67,6 +95,21 @@
 
                         <dt class="col-sm-4 text-muted">Órdenes activas</dt>
                         <dd class="col-sm-8">{{ $registro->orders()->whereIn('status', ['open', 'preparing', 'ready'])->count() }}</dd>
+
+                        @if ($registro->cleaning_started_at)
+                            <dt class="col-sm-4 text-muted">Inicio de limpieza</dt>
+                            <dd class="col-sm-8">{{ date_es($registro->cleaning_started_at) }} {{ time_es($registro->cleaning_started_at) }}</dd>
+                        @endif
+
+                        @if ($registro->ready_confirmed_at)
+                            <dt class="col-sm-4 text-muted">Última confirmación lista</dt>
+                            <dd class="col-sm-8">
+                                {{ date_es($registro->ready_confirmed_at) }} {{ time_es($registro->ready_confirmed_at) }}
+                                @if ($registro->readyConfirmedBy)
+                                    <span class="text-muted">por {{ $registro->readyConfirmedBy->name }}</span>
+                                @endif
+                            </dd>
+                        @endif
 
                         <dt class="col-sm-4 text-muted">Registrada</dt>
                         <dd class="col-sm-8">{{ date_es($registro->created_at) }}</dd>

@@ -84,8 +84,21 @@
                         </div>
 
                         <div class="mb-3">
+                            <label class="form-label fw-semibold">Motivo <span class="text-danger">*</span></label>
+                            <input type="text" name="reason" class="form-control @error('reason') is-invalid @enderror"
+                                   value="{{ old('reason') }}" maxlength="255" placeholder="Ej. Conteo físico, merma, corrección..." required>
+                            @error('reason')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
                             <label class="form-label fw-semibold">Cantidad</label>
-                            <input type="number" name="amount" class="form-control" min="0.01" step="0.01" required>
+                            <input type="number" name="amount" class="form-control @error('amount') is-invalid @enderror"
+                                   min="0.01" step="0.01" required>
+                            @error('amount')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
                         </div>
 
                         <button type="submit" class="btn btn-dark w-100">
@@ -97,7 +110,7 @@
 
                     <div class="small text-muted">
                         <i class="bi bi-info-circle me-1"></i>
-                        El ajuste nunca dejará el stock en negativo; si se intenta restar más de lo disponible, la cantidad se queda en 0.
+                        El motivo es obligatorio. Si el ajuste deja el stock en negativo, se rechaza y no se modifica la cantidad.
                     </div>
                 </div>
             </div>

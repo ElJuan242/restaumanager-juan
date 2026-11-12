@@ -8,6 +8,7 @@ enum BillStatus: string
     case Partial = 'partial';
     case Paid = 'paid';
     case Cancelled = 'cancelled';
+    case Void = 'void';
 
     public static function options(): array
     {
@@ -26,6 +27,7 @@ enum BillStatus: string
             self::Partial => 'Parcial',
             self::Paid => 'Pagada',
             self::Cancelled => 'Cancelada',
+            self::Void => 'Anulada',
         };
     }
 
@@ -36,6 +38,7 @@ enum BillStatus: string
             self::Partial => 'bg-info text-dark',
             self::Paid => 'bg-success',
             self::Cancelled => 'bg-danger',
+            self::Void => 'bg-dark',
         };
     }
 }

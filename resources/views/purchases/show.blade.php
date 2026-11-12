@@ -20,6 +20,12 @@
                         {!! badge($orden->status) !!}
                     </span>
                     <div class="d-flex gap-2">
+                        @if ($orden->status === \App\Enums\PurchaseOrderStatus::Partial)
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                    data-bs-toggle="modal" data-bs-target="#modalCerrarOrden">
+                                <i class="bi bi-lock me-1"></i>Cerrar forzoso
+                            </button>
+                        @endif
                         @unless ($orden->isLocked())
                             <a href="{{ route('purchases.edit', $orden) }}" class="btn btn-sm btn-primary">
                                 <i class="bi bi-pencil me-1"></i>Editar
@@ -59,7 +65,23 @@
                         <dd class="col-sm-8">{{ date_es($orden->received_date) }}</dd>
 
                         <dt class="col-sm-4 text-muted">Estado</dt>
-                        <dd class="col-sm-8">{!! badge($orden->status) !!}</dd>
+                        <dd class="col-sm-8">
+                            {!! badge($orden->status) !!}
+                            @if ($orden->isOverduePartial())
+                                <span class="badge bg-danger ms-1">Parcial vencida</span>
+                            @endif
+                        </dd>
+
+                        @if ($orden->closed_at)
+                            <dt class="col-sm-4 text-muted">Cerrada por</dt>
+                            <dd class="col-sm-8">{{ $orden->closedBy?->name ?? '—' }}</dd>
+
+                            <dt class="col-sm-4 text-muted">Fecha de cierre</dt>
+                            <dd class="col-sm-8">{{ date_es($orden->closed_at) }} · {{ time_es($orden->closed_at) }}</dd>
+
+                            <dt class="col-sm-4 text-muted">Motivo del cierre</dt>
+                            <dd class="col-sm-8">{{ $orden->closed_reason ?? '—' }}</dd>
+                        @endif
 
                         <dt class="col-sm-4 text-muted">Registrada</dt>
                         <dd class="col-sm-8">{{ date_es($orden->created_at) }}</dd>
@@ -216,4 +238,57 @@
             @endunless
         </div>
     </div>
+
+    @if ($orden->status === \App\Enums\PurchaseOrderStatus::Partial)
+        <div class="modal fade" id="modalCerrarOrden" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <form method="POST" action="{{ route('purchases.close', $orden) }}" class="modal-content">
+                    @csrf
+
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="bi bi-lock text-danger me-2"></i>Cerrar orden parcial
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="alert alert-warning small">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            La orden pasará a estado <strong>Cerrada</strong>. El inventario no cambiará y el total
+                            se recalculará únicamente sobre las cantidades ya recibidas más el IVA del 19%.
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="closed_reason" class="form-label fw-semibold">Motivo del cierre <span class="text-danger">*</span></label>
+                            <textarea name="closed_reason" id="closed_reason" rows="3"
+                                      class="form-control @error('closed_reason') is-invalid @enderror"
+                                      maxlength="500" required
+                                      placeholder="Ej. El proveedor no completó el pedido y la orden venció.">{{ old('closed_reason') }}</textarea>
+                            @error('closed_reason')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label for="close_pin" class="form-label fw-semibold">PIN de administrador <span class="text-danger">*</span></label>
+                            <input type="password" name="pin" id="close_pin"
+                                   class="form-control @error('pin') is-invalid @enderror"
+                                   inputmode="numeric" autocomplete="off" maxlength="20" required>
+                            @error('pin')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-lock me-1"></i>Cerrar forzosamente
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endif
 @endsection

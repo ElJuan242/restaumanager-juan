@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use App\Enums\InventoryCategory;
+use App\Enums\InventoryMovementType;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class InventoryItem extends Model
@@ -45,6 +47,37 @@ class InventoryItem extends Model
         return $this->quantity <= $this->min_stock;
     }
 
+    public function recipeItems(): HasMany
+    {
+        return $this->hasMany(RecipeItem::class, 'inventory_id');
+    }
+
+    public function movements(): HasMany
+    {
+        return $this->hasMany(InventoryMovement::class, 'inventory_id');
+    }
+
+    /**
+     * Registra un movimiento usando el saldo actual del insumo.
+     */
+    public function recordMovement(
+        InventoryMovementType $type,
+        float $quantity,
+        ?string $reason = null,
+        ?Model $reference = null,
+        ?int $userId = null
+    ): InventoryMovement {
+        return $this->movements()->create([
+            'type' => $type->value,
+            'quantity' => round($quantity, 2),
+            'balance_after' => round((float) $this->quantity, 2),
+            'user_id' => $userId,
+            'reference_type' => $reference?->getMorphClass(),
+            'reference_id' => $reference?->getKey(),
+            'reason' => $reason,
+        ]);
+    }
+
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('active', true);
@@ -78,7 +111,7 @@ class InventoryItem extends Model
      */
     public function adjustQuantity(float $delta): void
     {
-        $new = $this->quantity + $delta;
+        $new = round($this->quantity + $delta, 2);
 
         $this->forceFill(['quantity' => max(0, $new)])->save();
     }

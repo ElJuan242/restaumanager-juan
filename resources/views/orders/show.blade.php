@@ -17,6 +17,12 @@
                         <a href="{{ route('orders.edit', $registro) }}" class="btn btn-sm btn-primary">
                             <i class="bi bi-pencil me-1"></i>Editar
                         </a>
+                        @if (! in_array($registro->status, [\App\Enums\OrderStatus::Served, \App\Enums\OrderStatus::Cancelled], true))
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                    data-bs-toggle="modal" data-bs-target="#modalCancelarOrden">
+                                <i class="bi bi-x-circle me-1"></i>Cancelar orden
+                            </button>
+                        @endif
                         <form method="POST" action="{{ route('orders.destroy', $registro) }}"
                               onsubmit="return confirm('¿Seguro que deseas eliminar esta orden?');">
                             @csrf
@@ -53,6 +59,28 @@
                                 <span class="text-muted">Sin factura generada</span>
                             @endif
                         </dd>
+
+                        @if ($registro->status === \App\Enums\OrderStatus::Cancelled)
+                            <dt class="col-sm-4 text-muted">Cancelada</dt>
+                            <dd class="col-sm-8">
+                                @if ($registro->cancelled_at)
+                                    {{ date_es($registro->cancelled_at) }} · {{ time_es($registro->cancelled_at) }}
+                                @else
+                                    —
+                                @endif
+                            </dd>
+
+                            <dt class="col-sm-4 text-muted">Motivo de cancelación</dt>
+                            <dd class="col-sm-8">{{ $registro->cancel_reason ?? '—' }}</dd>
+
+                            <dt class="col-sm-4 text-muted">Cancelada por</dt>
+                            <dd class="col-sm-8">{{ $registro->cancelledBy?->name ?? '—' }}</dd>
+
+                            @if ($registro->authorizedBy)
+                                <dt class="col-sm-4 text-muted">Autorizada por</dt>
+                                <dd class="col-sm-8">{{ $registro->authorizedBy->name }}</dd>
+                            @endif
+                        @endif
                     </dl>
                 </div>
 
@@ -81,7 +109,7 @@
                                 <th>Plato</th>
                                 <th class="text-center">Cant.</th>
                                 <th class="text-end">Precio unit.</th>
-                                <th class="text-end">Subtotal</th>
+                                <th class="text-end">Importe</th>
                                 <th style="min-width: 220px;">Estado del item</th>
                                 <th>Notas</th>
                             </tr>
@@ -166,7 +194,7 @@
                                             <th class="text-end" style="width: 140px;">Precio unit.</th>
                                             <th style="width: 110px;">Cantidad</th>
                                             <th style="min-width: 160px;">Notas</th>
-                                            <th class="text-end" style="width: 120px;">Subtotal</th>
+                                            <th class="text-end" style="width: 120px;">Importe</th>
                                             <th style="width: 50px;"></th>
                                         </tr>
                                     </thead>
@@ -202,12 +230,16 @@
                         <dt class="col-7 text-muted">Subtotal</dt>
                         <dd class="col-5 text-end">{{ money($registro->subtotal) }}</dd>
 
-                        <dt class="col-7 text-muted">IVA ({{ pct(19) }})</dt>
+                        <dt class="col-7 text-muted">IVA incluido ({{ pct(config('restauranager.tax_rate', 0.19) * 100) }})</dt>
                         <dd class="col-5 text-end">{{ money($registro->tax) }}</dd>
 
                         <dt class="col-7 fw-bold fs-5">Total</dt>
                         <dd class="col-5 text-end fw-bold fs-5">{{ money($registro->total) }}</dd>
                     </dl>
+
+                    <div class="small text-muted mt-2">
+                        <i class="bi bi-info-circle me-1"></i>Los precios del menú incluyen IVA.
+                    </div>
                 </div>
             </div>
 
@@ -282,13 +314,85 @@
             </div>
         </div>
     </div>
+
+    @if (! in_array($registro->status, [\App\Enums\OrderStatus::Served, \App\Enums\OrderStatus::Cancelled], true))
+        <div class="modal fade" id="modalCancelarOrden" tabindex="-1" aria-labelledby="modalCancelarOrdenLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <form method="POST" action="{{ route('orders.cancel', $registro) }}">
+                        @csrf
+
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="modalCancelarOrdenLabel">
+                                <i class="bi bi-x-circle me-2"></i>Cancelar orden {{ $registro->order_number }}
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                        </div>
+
+                        <div class="modal-body">
+                            @if ($registro->bill?->hasPayments())
+                                <div class="alert alert-warning mb-0">
+                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                    No se puede cancelar esta orden porque su factura tiene pagos registrados.
+                                </div>
+                            @else
+                                <div class="alert alert-danger">
+                                    <i class="bi bi-exclamation-triangle me-2"></i>
+                                    Esta acción no se puede deshacer.
+                                    @if (in_array($registro->status, [\App\Enums\OrderStatus::Preparing, \App\Enums\OrderStatus::Ready], true))
+                                        Los insumos de los items que ya están en preparación o listos se registrarán como merma y no se repondrán.
+                                    @endif
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="cancel_reason" class="form-label fw-semibold">
+                                        Motivo de cancelación <span class="text-danger">*</span>
+                                    </label>
+                                    <textarea name="cancel_reason" id="cancel_reason" rows="3"
+                                              class="form-control @error('cancel_reason') is-invalid @enderror"
+                                              maxlength="500" required
+                                              placeholder="Describe el motivo de la cancelación...">{{ old('cancel_reason') }}</textarea>
+                                    @error('cancel_reason')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
+                                </div>
+
+                                @if (in_array($registro->status, [\App\Enums\OrderStatus::Preparing, \App\Enums\OrderStatus::Ready], true))
+                                    <div class="mb-0">
+                                        <label for="pin" class="form-label fw-semibold">
+                                            PIN de administrador <span class="text-danger">*</span>
+                                        </label>
+                                        <input type="password" name="pin" id="pin"
+                                               class="form-control @error('pin') is-invalid @enderror"
+                                               inputmode="numeric" autocomplete="off" required
+                                               placeholder="Ingresa el PIN del administrador">
+                                        @error('pin')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                        <div class="form-text">
+                                            Solo un administrador puede autorizar la cancelación de una orden en preparación o lista.
+                                        </div>
+                                    </div>
+                                @endif
+                            @endif
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Volver</button>
+                            <button type="submit" class="btn btn-danger" @disabled($registro->bill?->hasPayments())>
+                                <i class="bi bi-x-circle me-1"></i>Confirmar cancelación
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    @endif
 @endsection
 
 @if ($registro->isActive())
     @push('scripts')
     <script>
-        const IVA_ADD = 0.19;
-
         @php
             $platosAddJson = $platos->map(function ($p) {
                 return [
@@ -375,6 +479,20 @@
             if (platosAdd.length === 0) return;
 
             agregarFilaAdd(platosAdd[0].id);
+        });
+    </script>
+    @endpush
+@endif
+
+@if ($errors->has('cancel_reason') || $errors->has('pin') || $errors->has('status'))
+    @push('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const modalCancelar = document.getElementById('modalCancelarOrden');
+
+            if (modalCancelar && typeof bootstrap !== 'undefined') {
+                bootstrap.Modal.getOrCreateInstance(modalCancelar).show();
+            }
         });
     </script>
     @endpush

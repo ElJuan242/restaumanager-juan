@@ -7,6 +7,7 @@ use App\Enums\TableStatus;
 use App\Models\RestaurantTable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class RestaurantTableController extends Controller
@@ -53,6 +54,10 @@ class RestaurantTableController extends Controller
     {
         $data = $this->validar($request);
 
+        if ($data['status'] === TableStatus::Cleaning->value) {
+            $data['cleaning_started_at'] = now();
+        }
+
         RestaurantTable::create($data);
 
         return redirect()->route('tables.index')->with('success', 'Mesa registrada correctamente.');
@@ -60,6 +65,8 @@ class RestaurantTableController extends Controller
 
     public function show(RestaurantTable $table)
     {
+        $table->load('readyConfirmedBy');
+
         return view('tables.show', [
             'registro' => $table,
             'reservas' => $table->reservations()
@@ -90,9 +97,40 @@ class RestaurantTableController extends Controller
     {
         $data = $this->validar($request, $table);
 
+        if ($data['status'] === TableStatus::Cleaning->value && $table->status !== TableStatus::Cleaning) {
+            $data['cleaning_started_at'] = now();
+        }
+
         $table->update($data);
 
         return redirect()->route('tables.index')->with('success', 'Mesa actualizada correctamente.');
+    }
+
+    /**
+     * Marca una mesa en limpieza como lista y disponible (RF-47).
+     * Solo permitido si la mesa está en estado 'cleaning'.
+     */
+    public function ready(RestaurantTable $table): RedirectResponse
+    {
+        if ($table->status !== TableStatus::Cleaning) {
+            return redirect()->back()->with(
+                'error',
+                sprintf(
+                    'La mesa %s no se puede marcar como lista porque su estado es "%s" (solo permitido cuando está "Por limpiar").',
+                    $table->table_number,
+                    $table->status->label()
+                )
+            );
+        }
+
+        DB::transaction(function () use ($table) {
+            $table->markAsReady(auth()->id());
+        });
+
+        return redirect()->back()->with(
+            'success',
+            sprintf('Mesa %s marcada como lista y disponible.', $table->table_number)
+        );
     }
 
     /**

@@ -83,6 +83,9 @@
                             <td class="text-nowrap">
                                 <i class="bi bi-calendar3 text-muted me-1"></i>{{ date_es($reserva->reservation_date) }}
                                 <div class="small text-muted"><i class="bi bi-clock me-1"></i>{{ time_es($reserva->reservation_date) }}</div>
+                                @if ($reserva->reservation_end)
+                                    <div class="small text-muted"><i class="bi bi-clock-history me-1"></i>hasta {{ time_es($reserva->reservation_end) }}</div>
+                                @endif
                             </td>
                             <td class="text-center fw-semibold">{{ $reserva->people_count }}</td>
                             <td>

@@ -6,7 +6,7 @@
 @section('content')
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <div class="text-muted small">
-            <i class="bi bi-arrow-repeat me-1"></i>La vista se actualiza automáticamente cada 30 segundos.
+            <i class="bi bi-arrow-repeat me-1"></i>La vista se actualiza automáticamente cada 15 segundos.
         </div>
         <div class="d-flex gap-2">
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="location.reload()">
@@ -115,13 +115,13 @@
 @endsection
 
 @push('scripts')
-<meta http-equiv="refresh" content="30">
+<meta http-equiv="refresh" content="15">
 <script>
-    // Auto-refresco opcional de la vista de cocina cada 30 segundos.
+    // Auto-refresco de la vista de cocina cada 15 segundos.
     setTimeout(function () {
         if (! document.hidden) {
             location.reload();
         }
-    }, 30000);
+    }, 15000);
 </script>
 @endpush

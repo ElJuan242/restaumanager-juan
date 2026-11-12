@@ -24,6 +24,9 @@ class PurchaseOrder extends Model
         'tax',
         'total',
         'notes',
+        'closed_by',
+        'closed_at',
+        'closed_reason',
     ];
 
     protected function casts(): array
@@ -32,6 +35,7 @@ class PurchaseOrder extends Model
             'order_date' => 'date',
             'expected_date' => 'date',
             'received_date' => 'date',
+            'closed_at' => 'datetime',
             'status' => PurchaseOrderStatus::class,
             'subtotal' => 'float',
             'tax' => 'float',
@@ -58,6 +62,11 @@ class PurchaseOrder extends Model
         return $this->hasMany(PurchaseOrderItem::class);
     }
 
+    public function closedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'closed_by');
+    }
+
     public function taxRate(): float
     {
         return (float) config('restauranager.tax_rate', 0.19);
@@ -69,11 +78,45 @@ class PurchaseOrder extends Model
     }
 
     /**
+     * Indica si una orden parcial superó el plazo de vencimiento configurado.
+     */
+    public function isOverduePartial(): bool
+    {
+        if ($this->status !== PurchaseOrderStatus::Partial || ! $this->expected_date) {
+            return false;
+        }
+
+        $dias = (int) config('restauranager.po_overdue_days', 15);
+
+        return $this->expected_date->copy()->addDays($dias)->lt(today());
+    }
+
+    /**
      * Recalcula subtotal + IVA 19% = total.
      */
     public function recalculateTotals(): void
     {
         $subtotal = (float) $this->items()->sum('subtotal');
+        $tax = round($subtotal * $this->taxRate(), 2);
+
+        $this->forceFill([
+            'subtotal' => $subtotal,
+            'tax' => $tax,
+            'total' => $subtotal + $tax,
+        ])->save();
+    }
+
+    /**
+     * Recalcula los totales sobre las cantidades realmente recibidas.
+     * Se usa al cerrar forzosamente una orden parcial: recibido x precio + IVA 19%.
+     */
+    public function recalculateTotalsFromReceived(): void
+    {
+        $subtotal = (float) $this->items()->get()->sum(
+            fn (PurchaseOrderItem $item) => (float) $item->received_qty * (float) $item->unit_price
+        );
+
+        $subtotal = round($subtotal, 2);
         $tax = round($subtotal * $this->taxRate(), 2);
 
         $this->forceFill([

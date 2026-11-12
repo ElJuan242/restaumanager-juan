@@ -12,6 +12,7 @@ use App\Models\RestaurantTable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class BillsController extends Controller
 {
@@ -59,6 +60,10 @@ class BillsController extends Controller
         return view('bills.create', [
             'ordenes' => $ordenes,
             'ordenSel' => $ordenSel,
+            'porcentajeServicio' => $ordenSel
+                ? Bill::defaultServiceChargePercent($ordenSel->source)
+                : 0.0,
+            'porcentajeMaximo' => Bill::maxServiceChargePercent(),
         ]);
     }
 
@@ -66,46 +71,124 @@ class BillsController extends Controller
     {
         $data = $request->validate([
             'order_id' => ['required', 'exists:orders,id', 'unique:bills,order_id'],
-            'service_charge' => ['nullable', 'numeric', 'min:0'],
+            'service_charge_percent' => ['nullable', 'numeric', 'min:0', 'max:'.Bill::maxServiceChargePercent()],
+            'service_charge_waived' => ['nullable', 'boolean'],
             'discount' => ['nullable', 'numeric', 'min:0'],
         ], [
             'order_id.required' => 'Debes elegir una orden para facturar.',
             'order_id.exists' => 'La orden seleccionada no existe.',
             'order_id.unique' => 'Esta orden ya tiene una factura generada.',
-            'service_charge.min' => 'El cargo por servicio no puede ser negativo.',
+            'service_charge_percent.min' => 'El cargo por servicio no puede ser negativo.',
+            'service_charge_percent.max' => 'El cargo por servicio no puede superar el '.pct(Bill::maxServiceChargePercent()).'.',
             'discount.min' => 'El descuento no puede ser negativo.',
         ], [
             'order_id' => 'orden',
-            'service_charge' => 'cargo por servicio',
+            'service_charge_percent' => 'porcentaje de cargo por servicio',
+            'service_charge_waived' => 'exención del cargo por servicio',
             'discount' => 'descuento',
         ]);
 
         $orden = Order::with('items')->findOrFail($data['order_id']);
 
-        $subtotal = (float) $orden->subtotal;
-        $tax = (float) $orden->tax;
+        $consumo = (float) $orden->total;
+        $descuento = (float) ($data['discount'] ?? 0);
 
-        $serviceCharge = $request->filled('service_charge')
-            ? (float) $data['service_charge']
-            : round($subtotal * Bill::defaultServiceCharge(), 2);
+        if ($descuento > $consumo) {
+            throw ValidationException::withMessages([
+                'discount' => 'El descuento no puede superar el consumo de la orden ('.money($consumo).').',
+            ]);
+        }
 
-        $discount = (float) ($data['discount'] ?? 0);
+        $exento = $request->boolean('service_charge_waived');
+        $porcentaje = $exento
+            ? 0.0
+            : ($request->filled('service_charge_percent')
+                ? (float) $data['service_charge_percent']
+                : Bill::defaultServiceChargePercent($orden->source));
 
-        $total = round($subtotal + $tax + $serviceCharge - $discount, 2);
+        $importes = Bill::breakdown($consumo, $descuento, $porcentaje, $exento);
 
         $factura = Bill::create([
             'order_id' => $orden->id,
             'customer_id' => $orden->customer_id,
-            'subtotal' => $subtotal,
-            'tax' => $tax,
-            'service_charge' => $serviceCharge,
-            'discount' => $discount,
-            'total' => $total,
+            'subtotal' => $importes['subtotal'],
+            'tax' => $importes['tax'],
+            'service_charge' => $importes['service_charge'],
+            'service_charge_percent' => $importes['service_charge_percent'],
+            'service_charge_waived' => $importes['service_charge_waived'],
+            'discount' => $importes['discount'],
+            'total' => $importes['total'],
             'status' => BillStatus::Pending->value,
         ]);
 
+        if ((float) $factura->total <= 0) {
+            $factura->update(['status' => BillStatus::Paid->value]);
+            $this->liberarMesa($factura);
+        }
+
         return redirect()->route('bills.show', $factura)
             ->with('success', 'Factura '.$factura->bill_number.' generada correctamente.');
+    }
+
+    /**
+     * Ajusta descuento y cargo por servicio antes del primer pago.
+     */
+    public function update(Request $request, Bill $bill): RedirectResponse
+    {
+        if (! $bill->isAdjustable()) {
+            return redirect()->route('bills.show', $bill)
+                ->with('error', 'La factura ya tiene pagos registrados o no está pendiente; no es posible ajustar el descuento ni el cargo por servicio.');
+        }
+
+        $data = $request->validate([
+            'service_charge_percent' => ['nullable', 'numeric', 'min:0', 'max:'.Bill::maxServiceChargePercent()],
+            'service_charge_waived' => ['nullable', 'boolean'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
+        ], [
+            'service_charge_percent.min' => 'El cargo por servicio no puede ser negativo.',
+            'service_charge_percent.max' => 'El cargo por servicio no puede superar el '.pct(Bill::maxServiceChargePercent()).'.',
+            'discount.min' => 'El descuento no puede ser negativo.',
+        ], [
+            'service_charge_percent' => 'porcentaje de cargo por servicio',
+            'service_charge_waived' => 'exención del cargo por servicio',
+            'discount' => 'descuento',
+        ]);
+
+        $consumo = $bill->consumption();
+        $descuento = (float) ($data['discount'] ?? $bill->discount);
+
+        if ($descuento > $consumo) {
+            throw ValidationException::withMessages([
+                'discount' => 'El descuento no puede superar el consumo de la orden ('.money($consumo).').',
+            ]);
+        }
+
+        $exento = $request->boolean('service_charge_waived');
+        $porcentaje = $exento
+            ? 0.0
+            : ($request->filled('service_charge_percent')
+                ? (float) $data['service_charge_percent']
+                : (float) $bill->service_charge_percent);
+
+        $importes = $bill->calculateAmounts($descuento, $porcentaje, $exento);
+
+        $bill->update([
+            'subtotal' => $importes['subtotal'],
+            'tax' => $importes['tax'],
+            'service_charge' => $importes['service_charge'],
+            'service_charge_percent' => $importes['service_charge_percent'],
+            'service_charge_waived' => $importes['service_charge_waived'],
+            'discount' => $importes['discount'],
+            'total' => $importes['total'],
+        ]);
+
+        if ((float) $bill->total <= 0) {
+            $bill->update(['status' => BillStatus::Paid->value]);
+            $this->liberarMesa($bill);
+        }
+
+        return redirect()->route('bills.show', $bill)
+            ->with('success', 'Ajustes de la factura actualizados correctamente.');
     }
 
     public function show(Bill $bill)
@@ -123,6 +206,11 @@ class BillsController extends Controller
      */
     public function pay(Request $request, Bill $bill): RedirectResponse
     {
+        if ($bill->isVoid() || $bill->isCancelled()) {
+            return redirect()->route('bills.show', $bill)
+                ->with('error', 'La factura '.$bill->bill_number.' está '.mb_strtolower($bill->status->label()).' y no admite pagos.');
+        }
+
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'method' => ['required', 'in:'.implode(',', array_keys(PaymentMethod::options()))],
@@ -214,7 +302,7 @@ class BillsController extends Controller
     }
 
     /**
-     * Libera la mesa de la orden al quedar la factura pagada.
+     * Envía la mesa de la orden a limpieza al quedar la factura pagada.
      */
     private function liberarMesa(Bill $bill): void
     {
@@ -224,14 +312,20 @@ class BillsController extends Controller
             return;
         }
 
-        if ($orden->status->isClosable()) {
-            $orden->releaseTable();
+        $mesa = RestaurantTable::find($orden->restaurant_table_id);
+
+        if (! $mesa || $mesa->status === TableStatus::Maintenance) {
+            return;
+        }
+
+        if ($mesa->status === TableStatus::Cleaning) {
+            if (! $mesa->cleaning_started_at) {
+                $mesa->forceFill(['cleaning_started_at' => now()])->save();
+            }
 
             return;
         }
 
-        RestaurantTable::where('id', $orden->restaurant_table_id)
-            ->where('status', TableStatus::Occupied->value)
-            ->update(['status' => TableStatus::Available->value]);
+        $mesa->setStatus(TableStatus::Cleaning);
     }
 }
